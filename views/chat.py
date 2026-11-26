@@ -42,16 +42,19 @@ def start_cooking(match: RecipeMatch) -> None:
 
 
 def quick_recommend() -> None:
-    """Claude 없이: 임박 재료(3일)로 바로 검색."""
+    """Claude 없이: 임박 재료(3일)로 바로 검색, 없으면 냉장고의 다른 재료로."""
     names = [i.name for i in get_expiring(user.id, 3)]
-    matches = search_recipes(user.id, names)[:3]
+    matches = search_recipes(user.id, names)[:3] if names else []
+    if matches:
+        text = f"임박 재료({', '.join(names)})로 만들 수 있는 요리예요."
+    else:
+        today = today_kst()
+        stock = list(dict.fromkeys(i.name for i in get_inventory(user.id) if i.expires_at >= today))[:5]
+        matches = search_recipes(user.id, stock)[:3] if stock else []
+        reason = "3일 안에 끝나는 재료가 없어서" if not names else "임박 재료로 찾은 레시피가 없어서"
+        text = f"{reason}, 냉장고의 다른 재료로 골랐어요." if matches else "추천할 레시피를 찾지 못했어요."
     for m in matches:
         state.recipes[m.recipe.id] = m
-    text = (
-        f"임박 재료({', '.join(names)})로 만들 수 있는 요리예요." if names and matches
-        else "3일 안에 끝나는 재료가 없어서, 지금 재고로 만들 수 있는 요리를 골랐어요." if matches
-        else "추천할 레시피를 찾지 못했어요."
-    )
     log.append({"role": "assistant", "text": text, "matches": matches})
 
 

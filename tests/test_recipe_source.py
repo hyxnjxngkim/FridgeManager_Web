@@ -27,19 +27,28 @@ def test_matches_by_allergen_label_or_ingredient_name():
     assert not contains_allergen(shrimp, [])
 
 
-def test_peanut_recipe_from_b_is_removed_for_peanut_allergy(monkeypatch):
-    """B의 가짜 검색은 알레르기를 안 거르므로, 연결점에서 걸러져야 해요."""
+B_RESULTS = [
+    match("순두부 사과 소스 오이무침", ["오이", "땅콩", "순두부"], ["땅콩", "대두"]),
+    match("된장국", ["두부", "대파", "된장"], ["대두"]),
+    match("오이냉국", ["오이", "식초"], []),
+]
+
+
+@pytest.fixture
+def fake_b(monkeypatch):
+    """B의 진짜 검색은 DB·Bedrock 을 쓰니 테스트에선 고정 결과로 바꿔요."""
+    monkeypatch.setattr(b_recipes, "search_recipes", lambda uid, ing, **kw: list(B_RESULTS))
+
+
+def test_peanut_recipe_from_b_is_removed_for_peanut_allergy(monkeypatch, fake_b):
     monkeypatch.setattr(prefs, "get_preferences", lambda uid: [Preference("p", "allergy", "땅콩")])
     titles = [m.recipe.title for m in search_recipes("u1", ["오이", "두부"])]
-    assert titles  # 다른 레시피는 남아요
-    assert all("땅콩" not in m.recipe.allergens for m in search_recipes("u1", ["오이"]))
-    raw = [m.recipe.title for m in b_recipes.search_recipes("u1", ["오이"])]
-    assert any(t not in titles for t in raw)  # 실제로 하나 이상 빠졌어요
+    assert titles == ["된장국", "오이냉국"]  # 땅콩 레시피만 빠지고 나머지는 남아요
 
 
-def test_no_allergies_passes_everything(monkeypatch):
+def test_no_allergies_passes_everything(monkeypatch, fake_b):
     monkeypatch.setattr(prefs, "get_preferences", lambda uid: [])
-    assert len(search_recipes("u1", ["두부"])) == len(b_recipes.search_recipes("u1", ["두부"]))
+    assert len(search_recipes("u1", ["두부"])) == len(B_RESULTS)
 
 
 @pytest.fixture(autouse=True)
