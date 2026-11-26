@@ -41,7 +41,7 @@ _FAKE_RECIPES: list[Recipe] = [
         cook_minutes=20,
         servings=1,
         tags=["반찬", "찌기", "연두부"],
-        allergens=["갑각류", "대두", "알류", "우유"],
+        allergens=["달걀", "우유", "대두", "새우"],  # lib/allergens.py 이름·순서
         image_url=_IMG.format(seq=28),
     ),
     Recipe(

@@ -75,6 +75,6 @@ def test_recipe_card_shows_info_without_buttons():
     assert "연두부 75g" in texts
     assert "시금치 10g(선택)" in texts
     assert "약 20분 (추정)" in texts
-    assert "알레르기 성분: 갑각류, 대두, 알류, 우유" in texts
+    assert "알레르기 성분: 달걀, 우유, 대두, 새우" in texts
     assert at.expander[0].label == "만드는 법"
     assert not at.button  # 버튼은 카드에 넣지 않아요
