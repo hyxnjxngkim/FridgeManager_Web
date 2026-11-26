@@ -8,7 +8,8 @@
 """
 from __future__ import annotations
 
-from typing import Any, Optional, Sequence
+from contextlib import contextmanager
+from typing import Any, Iterator, Optional, Sequence
 
 import psycopg
 from psycopg.conninfo import make_conninfo
@@ -62,6 +63,14 @@ def fetch_all(sql: str, params: Sequence[Any] = ()) -> list[dict]:
 def fetch_one(sql: str, params: Sequence[Any] = ()) -> Optional[dict]:
     with _pool().connection() as conn:
         return conn.execute(sql, params).fetchone()
+
+
+@contextmanager
+def transaction() -> Iterator[psycopg.Connection]:
+    """여러 SQL을 한 번에 — 블록 안에서 오류가 나면 전부 취소돼요."""
+    with _pool().connection() as conn:
+        with conn.transaction():
+            yield conn
 
 
 def execute(sql: str, params: Sequence[Any] = ()) -> int:

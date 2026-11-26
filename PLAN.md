@@ -21,11 +21,13 @@
 | 화면 | **Streamlit** (`st.navigation` 멀티 페이지) | Python만으로 표·폼·채팅·차트·사진 업로드까지 기본 제공 |
 | DB | **AWS RDS PostgreSQL 18** + **pgvector**, `psycopg` 3 (연결 풀) | 이미 있는 RDS 재사용, 레시피 벡터 검색까지 한 DB에서 |
 | 로그인 | `users` 테이블 + **bcrypt** 비밀번호 해시 | 외부 서비스 없이 간단하게 |
-| LLM | **Claude API** (`anthropic` 파이썬 SDK) | 비전 + 툴 사용(에이전트) |
-| ├ 영수증 OCR | `claude-haiku-5-5` | 글자 위주라 싸고 빠른 모델로 충분 |
-| ├ 냉장고 사진 | `claude-sonnet-5-5` | 여러 재료 동시 인식은 더 강한 모델 |
-| └ 추천 에이전트 | `claude-sonnet-5-5` | 툴 호출·추론 |
-| 임베딩 | Voyage AI 등 임베딩 API (1024차원 등) | Claude는 임베딩 모델이 없으므로 별도 사용 |
+| LLM | **Claude on AWS Bedrock** (`anthropic[bedrock]` SDK의 `AnthropicBedrock`, `bedrock-runtime`) | 비전 + 툴 사용(에이전트). EC2 서버 역할(IAM)로 인증 |
+| ├ 기본 (채팅 에이전트 등) | **Claude Haiku 4.5** `global.anthropic.claude-haiku-4-5-20251001-v1:0` | 싸고 빠름. `.env`의 `CLAUDE_MODEL` |
+| └ 어려운 일에만 아껴서 | **Claude Sonnet 4.6** `global.anthropic.claude-sonnet-4-6` | 비용이 커서 많이 쓰지 않기. `.env`의 `CLAUDE_MODEL_SMART` |
+| 그 밖에 열린 모델 | Amazon Nova Lite·Micro v1 (`apac.amazon.nova-*-v1:0`), Nova 2 Lite (`global.amazon.nova-2-lite-v1:0`) | Claude가 아니라 Anthropic SDK로는 못 부름(boto3 Converse) |
+| 임베딩 | Bedrock 임베딩 모델 등 (B가 Phase 3에서 결정) | Claude는 임베딩 모델이 없으므로 별도 사용 |
+
+> 2026-11-26 확인: 이 AWS 계정은 Opus/Sonnet 5.5, Haiku 5.5, Sonnet 5, Opus 4.8이 **열려 있지 않고**, 서버 역할에 새 엔드포인트(`bedrock-mantle`) 권한이 없어요. 접근이 열리면 `.env`의 모델 이름만 바꾸면 돼요.
 | 달력 | **streamlit-calendar** 컴포넌트 (자체 일정) → 나중에 Google Calendar 연동 | 처음엔 앱 안 일정으로 시작해 OAuth 부담 제거 |
 | 차트 | Streamlit 기본 차트 (`st.bar_chart` 등) | 대시보드 |
 | 알림 | 앱 내 배너 + (선택) EC2 cron → 이메일 | |
@@ -107,7 +109,7 @@
 2. **임베딩**: 제목 + 재료 + 태그를 합친 텍스트를 임베딩해 `embedding`에 저장
 3. **검색 (하이브리드)**:
    - 임박 재료 이름으로 쿼리 임베딩 → pgvector 상위 30개
-   - SQL 필터: 알레르기 재료 포함 레시피 **제외**(하드 필터), 바쁜 날이면 `cook_minutes <= 10`
+   - SQL 필터: 알레르기 재료 포함 레시피 **제외**(하드 필터), 바쁜 날이면 `cook_minutes <= 15`
    - 코드로 점수화: `임박 재료 사용 수 × 3 + 보유 재료 비율 × 2 + 취향 태그 일치 + 평점 보정`
 4. **생성**: 상위 3~5개를 Claude에게 넘겨 추천 이유 + **없는 재료의 대체재** 제안 (예: 생크림 → 우유+버터)
 5. 추천 결과는 레시피 카드(`recipe_card()`)로 표시 (레시피별 출처 링크는 없음)
@@ -116,7 +118,7 @@
 - `schedule_events.kind`로 규칙 매핑 (코드):
   | kind | 규칙 |
   |---|---|
-  | busy | `cook_minutes <= 10` |
+  | busy | `cook_minutes <= 15` (15분 이하 요리) |
   | workout | `'고단백'` 태그 가중치 ↑ |
   | guests | `servings`를 손님 수+본인으로 스케일, 재료량 배수 계산 |
 - "이번 주 식단 짜줘" → 7일 일정을 읽고 날짜별 추천, 임박 재료가 이른 날짜에 배치되게
@@ -207,15 +209,15 @@
 - `python scripts/migrate.py` → `db/0002_seed_catalog.sql` 실행 (카탈로그 147개)
 
 ### Phase 2. 영수증/사진 인식 (1일)
-> "views/upload.py를 만들어줘. '영수증'이면 claude-haiku-5-5, '냉장고 사진'이면 claude-sonnet-5-5로 이미지를 보내 5장 ①의 JSON 형식으로 재료를 뽑아. 결과는 편집 가능한 표로 보여주고 저장 버튼을 누르면 inventory에 넣어. 카탈로그에 없는 재료는 Haiku에게 보관일수를 물어 카탈로그에 추가해."
+> "views/upload.py를 만들어줘. '영수증'이면 Haiku 4.5(CLAUDE_MODEL), '냉장고 사진'이면 Sonnet 4.6(CLAUDE_MODEL_SMART)으로 이미지를 보내 5장 ①의 JSON 형식으로 재료를 뽑아. 결과는 편집 가능한 표로 보여주고 저장 버튼을 누르면 inventory에 넣어. 카탈로그에 없는 재료는 Haiku에게 보관일수를 물어 카탈로그에 추가해."
 
 ### Phase 3. 레시피 RAG (2일)
 > "recipes 테이블에 레시피를 넣는 시드 스크립트(scripts/seed_recipes.py)를 만들어줘. 각 레시피의 제목+재료+태그를 임베딩해 저장해. 그리고 5장 ③의 하이브리드 검색(벡터 검색 → 알레르기 SQL 제외 → 코드 점수화)을 lib/recipes.py의 search_recipes()로 구현하고, 홈에 임박 재료 기반 추천 3개를 카드로 보여주고, 홈 아래에 '레시피 데이터: 식품안전나라' 한 줄을 표시해줘. 벡터 검색은 pgvector의 `embedding <=> %s` 거리 정렬 SQL로 하고, 필요한 인덱스·함수는 db/0003_... 새 파일에 넣어줘."
 
-### Phase 4. 에이전트 채팅 + 재고 차감 + 취향 기억 (2일)
-> "views/chat.py에 claude-sonnet-5-5 기반 에이전트를 만들어줘 (로직은 lib/agent.py). 6장의 툴들을 구현하고 st.write_stream으로 스트리밍해서 답해. 레시피 카드에 '이거 만들게' 버튼이 있고, 누르면 차감 미리보기 → 확인 시 FEFO로 재고 차감 + meal_logs 기록. 사용자가 취향/알레르기를 말하면 save_preference로 저장하고 views/settings.py에서 볼 수 있게 해줘."
+### Phase 4. 에이전트 채팅 + 재고 차감 + 취향 기억 (2일) ✅ 완료 (A)
+> "views/chat.py에 Haiku 4.5(Bedrock) 기반 에이전트를 만들어줘 (로직은 lib/agent.py). 6장의 툴들을 구현하고 st.write_stream으로 스트리밍해서 답해. 레시피 카드에 '이거 만들게' 버튼이 있고, 누르면 차감 미리보기 → 확인 시 FEFO로 재고 차감 + meal_logs 기록. 사용자가 취향/알레르기를 말하면 save_preference로 저장하고 views/settings.py에서 볼 수 있게 해줘."
 
-### Phase 5. 달력 + 일정 맞춤 + 장보기 (2일)
+### Phase 5. 달력 + 일정 맞춤 + 장보기 (2일) ✅ 완료 (A) — 식단은 Claude 없이 코드 규칙으로 (비용 0)
 > "views/calendar.py에 streamlit-calendar로 일정(busy/workout/guests)을 등록하고 임박 재료도 날짜별로 표시해줘. views/plan.py에서 '이번 주 식단 짜기'를 누르면 5장 ④ 규칙으로 7일 식단을 만들고, 5장 ⑦대로 부족 재료 장보기 목록을 만들어줘."
 
 ### Phase 6. 대시보드 + 피드백 학습 (1~2일)
@@ -262,12 +264,13 @@
 ### 11-1. 역할 분담
 
 > 2026-11-26 변경: Phase 2는 **보류**(담당은 나중에 정함). A가 Phase 4(에이전트)를 맡고, B는 Phase 3(레시피 검색)과 레시피 카드·홈 추천에 집중해요.
+> 같은 날 추가 변경: Phase 3가 길어져 **Phase 5 전체(뒷부분 포함)를 A가 맡았어요.** `views/plan.py`도 A 담당으로 바뀌었어요.
 
 | | 팀원 A: 재고·에이전트 라인 | 팀원 B: 레시피 라인 |
 |---|---|---|
 | 1단계 | **Phase 1** 재고 표, 유통기한 계산, 재료 카탈로그 ✅ | **Phase 3** 레시피 수집, 임베딩, 검색 |
 | 2단계 | **Phase 4** 에이전트 채팅, 재고 빼기, 취향 기억 | **Phase 3 마무리** 홈 추천 카드, `recipe_card()` |
-| 3단계 | **Phase 5 앞부분** 달력, 일정 등록 | **Phase 5 뒷부분** 주간 식단, 장보기 목록 |
+| 3단계 | **Phase 5 전체** 달력·일정, 주간 식단, 장보기 목록 ✅ (Phase 3가 길어져 A가 모두 맡음) | **Phase 3 진짜 검색** 레시피 수집·임베딩·벡터 검색 |
 | 4단계 | **Phase 6 앞부분** 대시보드 통계·차트 | **Phase 6 뒷부분** 피드백 학습 |
 | 보류 | **Phase 2** 영수증·사진 인식 — 담당 미정 | |
 
@@ -275,8 +278,8 @@
 
 | 담당 | 주로 만지는 곳 |
 |---|---|
-| A | `views/inventory.py`, `views/chat.py`, `views/settings.py`, `views/calendar.py`, `views/dashboard.py`, `lib/inventory*.py`, `lib/agent.py`, `lib/preferences.py` |
-| B | `views/home.py`, `views/plan.py`, `lib/recipes.py`, `lib/ui.py`의 `recipe_card()`, `scripts/` (레시피 시드) |
+| A | `views/inventory.py`, `views/chat.py`, `views/settings.py`, `views/calendar.py`, `views/plan.py`, `views/dashboard.py`, `lib/inventory*.py`, `lib/agent.py`, `lib/preferences.py`, `lib/schedule.py`, `lib/meal_plan*.py`, `lib/shopping*.py` |
+| B | `views/home.py`, `lib/recipes.py`, `lib/ui.py`의 `recipe_card()`, `scripts/` (레시피 시드) |
 
 ### 11-2. 시작 전에 같이 할 일 (반나절)
 
@@ -307,7 +310,7 @@
 ### 11-4. 충돌 막는 규칙
 
 - **DB 변경은 새 파일로**: `0001_init.sql`은 고치지 말고 `0002_...sql`, `0003_...sql`처럼 새 파일을 추가해요. 번호가 겹치지 않게 만들기 전에 서로 알려요.
-- **DB 번호 현황**: `db/0001`(테이블), `db/0002`(카탈로그, A)까지 사용·실행 완료. `0003`은 B(Phase 3), A가 필요하면 `0004`부터.
+- **DB 번호 현황**: `db/0001`(테이블), `db/0002`(카탈로그, A), `db/0004`(요리 기록에 레시피 이름, A), `db/0005`(주간 식단 `meal_plans`·장보기 보강, A)까지 실행 완료. `0003`은 B(Phase 3) 몫으로 비워 둠. 다음 A는 `0006`부터.
 - **공용 파일은 조심**: `requirements.txt`, 메뉴(`app.py`), `lib/models.py`, `lib/db.py`, `lib/ui.py`는 고칠 때 미리 알리고 바로 PR로 올려요.
 - **아침마다 `main` 받기**: 작업 시작 전에 `main`의 최신 내용을 자기 브랜치로 가져와요.
 - **브랜치 이름 통일**: `phase1-inventory`, `phase3-recipe-search`처럼 `phase번호-내용`으로 지어요.

@@ -65,4 +65,5 @@ def sign_up(email: str, password: str) -> Optional[str]:
 
 
 def sign_out() -> None:
-    st.session_state.pop("user", None)
+    # 채팅 기록 등 이 사람의 세션 데이터를 모두 지워요 (같은 브라우저에서 다른 계정이 로그인해도 안 보이게)
+    st.session_state.clear()

@@ -7,3 +7,6 @@ tzdata>=2024.1
 boto3>=1.35,<2
 # Phase 2부터 사용
 # anthropic>=0.70
+streamlit-calendar>=1.4,<2
+# Claude (AWS Bedrock). 2.x는 Bedrock의 4.6 이하 모델이 거부하는 API 버전을 보내서 2 미만으로 고정
+anthropic[bedrock]>=0.125,<2

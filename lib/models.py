@@ -43,6 +43,44 @@ class InventoryItem:
     status: InventoryStatus
 
 
+# ── 취향·알레르기 (Phase 4, A) ────────────────
+PreferenceKind = Literal["allergy", "like", "dislike", "diet"]
+
+
+@dataclass
+class Preference:
+    """preferences 테이블 한 줄. 예: kind="allergy", value="땅콩" (A가 쓰고 B의 검색이 읽어요)."""
+
+    id: str
+    kind: PreferenceKind
+    value: str
+    strength: int = 1
+
+
+# ── 일정·식단·장보기 (Phase 5, A) ─────────────
+ScheduleKind = Literal["busy", "workout", "guests", "normal"]
+
+
+@dataclass
+class ScheduleEvent:
+    id: str
+    date: date
+    kind: ScheduleKind
+    title: Optional[str] = None
+    guests: Optional[int] = None  # 손님 수 (kind="guests")
+
+
+@dataclass
+class ShoppingItem:
+    id: str
+    name: str
+    quantity: Optional[float]
+    unit: Optional[str]
+    checked: bool
+    source: str  # "plan" / "manual"
+    recipe_title: Optional[str] = None
+
+
 # ── 레시피 (Phase 3, 팀원 B) ──────────────────
 @dataclass
 class RecipeIngredient:

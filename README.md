@@ -3,7 +3,7 @@
 기획은 [PLAN.md](PLAN.md), 팀 작업 방식은 PLAN.md 11장을 보세요.
 
 ## 스택
-Python 3.9+ · Streamlit · AWS RDS PostgreSQL 18 + pgvector (`fridge` 스키마) · psycopg 3 · bcrypt · Claude API · pytest
+Python 3.9+ · Streamlit · AWS RDS PostgreSQL 18 + pgvector (`fridge` 스키마) · psycopg 3 · bcrypt · Claude on AWS Bedrock (Haiku 4.5 기본, Sonnet 4.6은 아껴서) · pytest
 배포: AWS EC2 (systemd, `deploy/fridge-app.service`)
 
 ## 처음 실행하기
@@ -27,7 +27,8 @@ Python 3.9+ · Streamlit · AWS RDS PostgreSQL 18 + pgvector (`fridge` 스키마
    ```bash
    python scripts/migrate.py
    ```
-5. 실행 → http://localhost:8501
+5. (채팅 에이전트를 쓰려면) AWS 자격증명이 필요해요. EC2에서는 서버 역할로 자동이고, 로컬에서는 `aws login`으로 로그인해요. 없으면 채팅 입력이 꺼지고 "임박 재료로 바로 추천" 버튼만 동작해요.
+6. 실행 → http://localhost:8501
    ```bash
    streamlit run app.py
    ```
@@ -79,6 +80,17 @@ lib/                   로직
   catalog.py           재료 카탈로그 매칭 — 순수 함수
   inventory_rules.py   입력 검사·유통기한 결정 — 순수 함수
   inventory.py         재고 DB 읽기·쓰기, get_expiring()
+  preferences.py       취향·알레르기 기억
+  cooking_rules.py     "이거 만들게" 재고 빼기 계획 (FEFO, 단위 환산) — 순수 함수
+  cooking.py           재고 빼기 적용 + 요리 기록
+  llm.py               Claude 클라이언트 (AWS Bedrock)
+  agent.py             냉장고 에이전트 (도구 7개, 스트리밍)
+  recipe_source.py     레시피 검색 연결점 (B의 search_recipes + 알레르기 이중 안전장치)
+  schedule.py          일정 (바쁜 날·운동·손님)
+  meal_plan_rules.py   주간 식단 짜기 규칙 (Claude 없이) — 순수 함수
+  meal_plan.py         주간 식단 저장·조회
+  shopping_rules.py    장보기 목록 계산 (식단 재료 − 재고) — 순수 함수
+  shopping.py          장보기 목록 저장, 산 것 → 재고
   ui.py                공용 화면 조각
 db/                    SQL 마이그레이션 (번호 순서)
 scripts/
