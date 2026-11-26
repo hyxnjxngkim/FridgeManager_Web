@@ -21,6 +21,13 @@ AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-1")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "global.anthropic.claude-haiku-4-5-20251001-v1:0")
 CLAUDE_MODEL_SMART = os.getenv("CLAUDE_MODEL_SMART", "global.anthropic.claude-sonnet-4-6")
 
+# Phase 3: 레시피 (팀원 B)
+RECIPE_API_KEY = os.getenv("RECIPE_API_KEY", "")  # 식품안전나라 Open API (시드 스크립트만 씀)
+# 임베딩: Amazon Titan Text Embeddings V2 (Bedrock). RDS와 리전이 달라도 돼요.
+BEDROCK_REGION = os.getenv("BEDROCK_REGION", "")
+EMBED_MODEL_ID = os.getenv("EMBED_MODEL_ID", "amazon.titan-embed-text-v2:0")
+AWS_PROFILE = os.getenv("AWS_PROFILE", "")  # 로컬에서만. EC2는 비워 두면 서버 역할(IAM role)을 씀
+
 
 def is_db_configured() -> bool:
     return bool(PG_HOST and PG_DB and PG_USER and PG_PASSWORD)

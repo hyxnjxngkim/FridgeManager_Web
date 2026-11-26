@@ -21,6 +21,14 @@ def coming_soon(phase: str, items: list[str]) -> None:
 
 
 # ── 레시피 카드 (Phase 3, 팀원 B) ─────────────────────────
+RECIPE_DATA_CREDIT = "레시피 데이터: 식품안전나라"  # 공공누리 출처표시 (레시피별 출처는 없음)
+
+
+def recipe_data_credit() -> None:
+    """레시피를 보여 주는 화면 아래에 한 줄 (홈, 채팅 등)."""
+    st.caption(RECIPE_DATA_CREDIT)
+
+
 def _ingredient_text(ing: RecipeIngredient) -> str:
     """예: '연두부 75g', '시금치 10g(선택)', '소금'"""
     qty = ""
