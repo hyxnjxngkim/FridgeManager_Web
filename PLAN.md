@@ -261,19 +261,22 @@
 
 ### 11-1. 역할 분담
 
-| | 팀원 A: 재고 라인 | 팀원 B: 레시피·AI 라인 |
+> 2026-11-26 변경: Phase 2는 **보류**(담당은 나중에 정함). A가 Phase 4(에이전트)를 맡고, B는 Phase 3(레시피 검색)과 레시피 카드·홈 추천에 집중해요.
+
+| | 팀원 A: 재고·에이전트 라인 | 팀원 B: 레시피 라인 |
 |---|---|---|
-| 1단계 | **Phase 1** 재고 표, 유통기한 계산, 재료 카탈로그 | **Phase 3** 레시피 수집, 임베딩, 검색 |
-| 2단계 | **Phase 2** 영수증·사진 인식 | **Phase 4** 에이전트 채팅, 재고 빼기, 취향 기억 |
+| 1단계 | **Phase 1** 재고 표, 유통기한 계산, 재료 카탈로그 ✅ | **Phase 3** 레시피 수집, 임베딩, 검색 |
+| 2단계 | **Phase 4** 에이전트 채팅, 재고 빼기, 취향 기억 | **Phase 3 마무리** 홈 추천 카드, `recipe_card()` |
 | 3단계 | **Phase 5 앞부분** 달력, 일정 등록 | **Phase 5 뒷부분** 주간 식단, 장보기 목록 |
 | 4단계 | **Phase 6 앞부분** 대시보드 통계·차트 | **Phase 6 뒷부분** 피드백 학습 |
+| 보류 | **Phase 2** 영수증·사진 인식 — 담당 미정 | |
 
 각자 맡은 화면과 폴더가 거의 겹치지 않아 충돌이 적어요.
 
 | 담당 | 주로 만지는 곳 |
 |---|---|
-| A | `views/inventory.py`, `views/upload.py`, `views/calendar.py`, `views/dashboard.py`, `lib/inventory*.py`, `lib/ingest.py` |
-| B | `views/chat.py`, `views/plan.py`, `views/settings.py`, `lib/recipes.py`, `lib/agent.py`, `scripts/` |
+| A | `views/inventory.py`, `views/chat.py`, `views/settings.py`, `views/calendar.py`, `views/dashboard.py`, `lib/inventory*.py`, `lib/agent.py`, `lib/preferences.py` |
+| B | `views/home.py`, `views/plan.py`, `lib/recipes.py`, `lib/ui.py`의 `recipe_card()`, `scripts/` (레시피 시드) |
 
 ### 11-2. 시작 전에 같이 할 일 (반나절)
 
@@ -281,15 +284,21 @@
 2. 서로 부를 함수의 **모양(입력·출력)만** 먼저 정해서 `main`에 올려요. 처음엔 가짜 데이터를 돌려줘도 돼요.
    - A 담당 ✅: `get_expiring(user_id: str, days: int, include_expired: bool = False) -> list[InventoryItem]` — 임박 재료 목록 (`lib/inventory.py`)
    - B 담당: `search_recipes(user_id: str, ingredients: list[str], max_minutes=None, servings=None, tags=None) -> list[RecipeMatch]` (알레르기 제외를 위해 user_id 필요) — 추천 레시피 목록 (`lib/recipes.py`)
+   - B 담당: `recipe_card(match: RecipeMatch)` — 레시피 카드 화면 조각 (`lib/ui.py`). 홈(B)과 채팅(A)이 같이 써요. A는 직접 만들지 않고 가져다 써요.
    - 같이 쓰는 데이터 모양(`InventoryItem`, `Recipe`, `RecipeMatch` 등)은 `lib/models.py`에 모아요.
 3. 이렇게 하면 B는 A의 재고 기능이 끝나기 전에도 가짜 임박 재료로 레시피 검색을 개발할 수 있어요.
+4. **Phase 4(A) ↔ Phase 3(B) 약속**
+   - A는 B가 끝내기 전까지 같은 모양의 가짜 `search_recipes()` / `recipe_card()`로 개발하고, B의 PR이 합쳐지면 진짜로 바꿔요. 모양을 바꿀 땐 바로 알려요.
+   - 레시피 재료 목록은 `Recipe.ingredients: list[RecipeIngredient]`(이름·수량·단위·선택 여부) 형식을 지켜요. "이거 만들게" 재고 차감이 이 형식을 읽어요.
+   - 취향·알레르기 저장 형식(`preferences` 테이블): `kind`는 `allergy` / `like` / `dislike` / `diet`, `value`는 재료·맛 이름 하나 (예: `allergy` + `땅콩`). A의 에이전트가 쓰고, B의 검색이 읽어요.
+   - Claude 호출 방식(Anthropic API 키 / AWS Bedrock)은 둘이 같은 방식으로 정해요.
 
 ### 11-3. 합치는 시점
 
 | 시점 | 합치는 것 | 합친 뒤 확인할 것 |
 |---|---|---|
 | **1차 (1주차 끝)** | Phase 1 + 3 | 홈 화면에 진짜 임박 재료와 그 재료로 만든 추천 레시피가 나와요 |
-| **2차 (2주차 끝)** | Phase 2 + 4 | **MVP 완성**: 영수증 등록 → 레시피 추천 → "이거 만들게" → 재고 차감까지 한 흐름 |
+| **2차 (2주차 끝)** | Phase 3 마무리 + 4 | **MVP 완성**: 재료 등록(직접 입력) → 레시피 추천 → "이거 만들게" → 재고 차감까지 한 흐름 |
 | **3차 (3주차 중반)** | Phase 5 | 일정을 반영한 주간 식단과 장보기 목록 |
 | **4차 (3주차 끝)** | Phase 6 | 통계와 피드백 학습 |
 
@@ -298,7 +307,7 @@
 ### 11-4. 충돌 막는 규칙
 
 - **DB 변경은 새 파일로**: `0001_init.sql`은 고치지 말고 `0002_...sql`, `0003_...sql`처럼 새 파일을 추가해요. 번호가 겹치지 않게 만들기 전에 서로 알려요.
-- **DB 번호 현황**: `db/0001`(테이블), `db/0002`(카탈로그, A)까지 사용·실행 완료. B는 `0003`부터.
+- **DB 번호 현황**: `db/0001`(테이블), `db/0002`(카탈로그, A)까지 사용·실행 완료. `0003`은 B(Phase 3), A가 필요하면 `0004`부터.
 - **공용 파일은 조심**: `requirements.txt`, 메뉴(`app.py`), `lib/models.py`, `lib/db.py`, `lib/ui.py`는 고칠 때 미리 알리고 바로 PR로 올려요.
 - **아침마다 `main` 받기**: 작업 시작 전에 `main`의 최신 내용을 자기 브랜치로 가져와요.
 - **브랜치 이름 통일**: `phase1-inventory`, `phase3-recipe-search`처럼 `phase번호-내용`으로 지어요.
