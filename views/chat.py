@@ -110,13 +110,18 @@ if plan:
         if c1.button("확정 — 재고에서 빼기", type="primary", width="stretch", disabled=not plan.lines):
             for ln, (_, row) in zip(plan.lines, edited.iterrows()):
                 ln.amount = max(0.0, min(float(row["뺄 양"] or 0), ln.available))
-            result = apply_cook(user.id, plan)
+            # 확인 화면을 먼저 닫아요: 저장 뒤에 오류가 나도 같은 화면에서 다시 눌러 두 번 빠지는 일이 없게
+            state.pending_cook = None
+            try:
+                result = apply_cook(user.id, plan)
+            except Exception as e:
+                log.append({"role": "assistant", "text": f"재고를 빼다가 오류가 났어요 ({type(e).__name__}). 재고 페이지에서 '{plan.recipe_title}' 재료가 빠졌는지 확인해 주세요."})
+                st.rerun()
             rescued = result.rescued
             msg = f"'{plan.recipe_title}' 재료를 재고에서 뺐어요." + (f" 임박 재료 {rescued}개를 구출했어요! 🎉" if rescued else "")
             log.append({"role": "assistant", "text": msg})
             state.notes.append(f"사용자가 '{plan.recipe_title}'을(를) 만들어 재고를 뺐어요 (구출 {rescued}개).")
             st.session_state.feedback_for = (result.meal_log_id, plan.recipe_title)
-            state.pending_cook = None
             st.rerun()
         if c2.button("취소", width="stretch"):
             state.pending_cook = None

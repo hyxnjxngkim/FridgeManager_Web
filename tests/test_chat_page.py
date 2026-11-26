@@ -70,3 +70,24 @@ def test_settings_lists_and_deletes(monkeypatch):
     assert any("땅콩" in m.value for m in at.markdown)
     at.button(key="del-p1").click().run()
     assert [p.id for p in store] == ["p2"]
+
+
+def test_confirm_error_closes_panel_so_no_double_deduction(env, monkeypatch):
+    calls = []
+
+    def boom(uid, plan):
+        calls.append(plan.recipe_title)
+        raise KeyError(0)
+
+    monkeypatch.setattr(cooking, "apply_cook", boom)
+    at = run("chat.py")
+    at.button(key=next(b.key for b in at.button if "임박 재료로" in b.label)).click().run()
+    next(b for b in at.button if "이거 만들게" in b.label).click().run()
+    next(b for b in at.button if "확정" in b.label).click().run()
+    assert not at.exception, at.exception
+    assert calls == ["두부조림"]
+    assert any("오류가 났어요" in m.value for m in at.markdown)
+    assert at.session_state["agent_state"].pending_cook is None  # 확인 화면이 닫힘
+    at.run()  # 사용자가 다음에 보게 될 화면
+    assert not any("확정" in b.label for b in at.button)  # 다시 눌러 두 번 빠지는 일이 없음
+    assert calls == ["두부조림"]

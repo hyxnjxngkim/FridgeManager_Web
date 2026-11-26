@@ -28,13 +28,13 @@
 | 임베딩 | Bedrock 임베딩 모델 등 (B가 Phase 3에서 결정) | Claude는 임베딩 모델이 없으므로 별도 사용 |
 
 > 2026-11-26 확인: 이 AWS 계정은 Opus/Sonnet 5.5, Haiku 5.5, Sonnet 5, Opus 4.8이 **열려 있지 않고**, 서버 역할에 새 엔드포인트(`bedrock-mantle`) 권한이 없어요. 접근이 열리면 `.env`의 모델 이름만 바꾸면 돼요.
-| 달력 | **streamlit-calendar** 컴포넌트 (자체 일정) → 나중에 Google Calendar 연동 | 처음엔 앱 안 일정으로 시작해 OAuth 부담 제거 |
+| 달력 | **streamlit-calendar** 컴포넌트 (앱 안 일정) | Google Calendar 연동은 하지 않기로 함 (Phase 7 제외) |
 | 차트 | Streamlit 기본 차트 (`st.bar_chart` 등) | 대시보드 |
-| 알림 | 앱 내 배너 + (선택) EC2 cron → 이메일 | |
+| 알림 | 앱 내 배너 (홈의 임박 재료) | 이메일·푸시 알림은 하지 않기로 함 (Phase 7 제외) |
 | 테스트 | **pytest** + Streamlit `AppTest` | 계산 로직과 화면을 DB 없이 검사 |
 | 배포 | **AWS EC2** (`streamlit run` + systemd, `deploy/fridge-app.service`) + RDS | |
 
-> 💡 처음부터 Google Calendar·푸시 알림까지 하지 말고, **앱 내 달력 + 앱 내 알림**으로 MVP를 먼저 끝내세요.
+> 💡 Google Calendar 연동·푸시 알림 없이 **앱 내 달력 + 앱 내 알림**으로 마무리했어요 (Phase 7 제외).
 
 ---
 
@@ -227,8 +227,9 @@
 ### Phase 6. 대시보드 + 피드백 학습 (1~2일) ✅ 완료 (A)
 > "views/dashboard.py에 st.metric과 Streamlit 차트로 구출 수, 폐기 수, 구출률, 자주 먹은 요리 TOP5를 보여줘. 요리 후 👍/👎+코멘트를 받고, 5장 ⑨처럼 평점을 추천 점수에 반영하고 코멘트를 취향으로 변환해 preferences를 갱신해."
 
-### Phase 7. 마무리 (선택)
-- Google Calendar 연동, 알림(EC2 cron으로 매일 아침 임박 재료 이메일), AWS EC2 배포 (`deploy/fridge-app.service`)
+### Phase 7. 마무리 (선택) — ❌ 하지 않기로 함 (2026-11-26)
+- ~~Google Calendar 연동, 알림(EC2 cron으로 매일 아침 임박 재료 이메일)~~ — 하지 않아요.
+- AWS EC2 배포는 Phase마다 이미 하고 있어요 (`deploy/fridge-app.service`, README의 EC2 배포).
 
 ---
 
@@ -255,7 +256,7 @@
 | 1주차 | Phase 0~2 | 로그인, 재고 관리, 영수증/사진 등록, 유통기한 표시 |
 | 2주차 | Phase 3~4 | 구출 레시피 추천(RAG), 에이전트 채팅, 재고 차감, 취향 기억 |
 | 3주차 | Phase 5~6 | 달력·일정 맞춤 식단, 장보기, 대시보드, 피드백 학습 |
-| 4주차 | Phase 7 + 버그 수정 | 배포 및 시연 준비 |
+| 4주차 | 버그 수정 (Phase 7은 하지 않음) | 배포 및 시연 준비 |
 
 > 2인 동시 작업 시에는 11장의 분담·합치기 일정을 따르세요.
 

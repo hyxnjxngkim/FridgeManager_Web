@@ -49,4 +49,5 @@ def apply_cook(user_id: str, plan: CookPlan) -> CookResult:
             " values (%s, %s, %s, %s, %s) returning id",
             (user_id, recipe_id, plan.recipe_title, plan.servings, rescued),
         ).fetchone()
-    return CookResult(rescued, str(row[0]))
+    # 앱의 DB 연결은 dict 로 돌려줘요 (lib/db.py, row_factory=dict_row) — row[0] 이 아니라 row["id"]
+    return CookResult(rescued, str(row["id"]))

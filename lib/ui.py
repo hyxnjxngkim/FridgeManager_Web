@@ -14,12 +14,6 @@ def expiry_label(days_left: int) -> str:
     return f"{LEVEL_EMOJI[expiry_level(days_left)]} {d_day_label(days_left)}"
 
 
-def coming_soon(phase: str, items: list[str]) -> None:
-    with st.container(border=True):
-        st.markdown(f"**{phase}에서 만들 기능** · 지금은 빈 화면이에요.")
-        st.markdown("\n".join(f"- {item}" for item in items))
-
-
 # ── 레시피 카드 (Phase 3, 팀원 B) ─────────────────────────
 RECIPE_DATA_CREDIT = "레시피 데이터: 식품안전나라"  # 공공누리 출처표시 (레시피별 출처는 없음)
 

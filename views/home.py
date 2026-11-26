@@ -4,7 +4,7 @@ from lib.auth import require_user
 from lib.dates import today_kst
 from lib.inventory import days_left, get_expiring
 from lib.recipes import search_recipes
-from lib.ui import coming_soon, expiry_label, recipe_card, recipe_data_credit
+from lib.ui import expiry_label, recipe_card, recipe_data_credit
 
 HOME_RECIPES = 3  # 홈에 보여 줄 추천 레시피 수
 
@@ -52,5 +52,4 @@ else:
     elif matches is not None:
         st.info("임박 재료로 만들 수 있는 레시피를 찾지 못했어요.")
 
-coming_soon("Phase 4", ["에이전트에게 바로 물어보는 입력창"])
 recipe_data_credit()
