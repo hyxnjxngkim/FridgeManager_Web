@@ -1,102 +1,115 @@
-"""레시피 검색 (Phase 3, 팀원 B).
+"""레시피 검색 (Phase 3, 팀원 B) — 팀 공용 함수 search_recipes() (PLAN.md 11-2).
 
-⚠️ 지금은 **가짜 버전**이에요 (PLAN.md 11-2).
-   - DB·임베딩 없이, 식품안전나라 레시피 3개를 고정 데이터로 들고 있어요.
-   - 함수 모양(입력·출력)은 진짜 버전과 같아요. A(Phase 4)는 이 모양 그대로 가져다 쓰면 돼요.
-   - 진짜 버전(벡터 검색 → 알레르기 SQL 제외 → 코드 점수화)으로 바뀌어도 모양은 바꾸지 않아요.
-     바꿔야 하면 먼저 A에게 알려요.
+흐름 (PLAN 5장 ③-3 하이브리드 검색)
+    1) 임박 재료(+태그)로 검색어를 만들어 임베딩 → pgvector 거리순 상위 30개
+       - 이때 SQL 로 알레르기 레시피를 **빼고**(하드 필터), max_minutes 가 있으면 조리 시간도 걸러요
+    2) 코드로 점수 매기기 (lib/recipe_rules.py): 임박 재료 사용 수 × 3 + 보유 비율 × 2 + 태그 일치
+    3) 점수 순으로 돌려줌
+
+임베딩(Bedrock)을 못 부르면 재료 이름 글자 검색으로 대신해요 (알레르기 제외는 똑같이 해요).
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
+from lib.allergens import normalize_allergy
 from lib.models import Recipe, RecipeIngredient, RecipeMatch
+from lib.recipe_rules import has_allergen, rank, score_recipe
 
-# 점수 가중치 (PLAN 5장 ③: 임박 재료 사용 수 × 3 + … + 취향 태그 일치)
-EXPIRING_WEIGHT = 3
-TAG_WEIGHT = 1
+log = logging.getLogger(__name__)
 
-# ── 가짜 데이터: 식품안전나라 조리식품의 레시피 DB(COOKRCP01)에서 옮긴 3개 ──
-# cook_minutes 는 추정값, servings 는 1인분 (변환 규칙 참고)
-_IMG = "https://www.foodsafetykorea.go.kr/uploadimg/cook/10_{seq:05d}_2.png"
+CANDIDATES = 30  # 벡터 검색으로 가져올 후보 수
 
-_FAKE_RECIPES: list[Recipe] = [
-    Recipe(
-        id="fake-28",
-        title="새우 두부 계란찜",
+_COLUMNS = "id, title, ingredients, steps, cook_minutes, servings, tags, allergens, image_url"
+_FILTERS = (
+    " not (allergens && %s::text[])"
+    " and (%s::int is null or cook_minutes <= %s::int)"
+)
+_VECTOR_SQL = (
+    f"select {_COLUMNS} from recipes"
+    f" where embedding is not null and{_FILTERS}"
+    " order by embedding <=> %s::vector limit %s"
+)
+_TEXT_SQL = (
+    f"select {_COLUMNS} from recipes"
+    f" where{_FILTERS}"
+    " and exists (select 1 from jsonb_array_elements(ingredients) e where e->>'name' ilike any(%s::text[]))"
+    " order by title limit %s"
+)
+_ALLERGY_SQL = "select value from preferences where user_id = %s and kind = 'allergy'"
+
+
+# ── DB·외부 호출 (테스트에서 가짜로 바꿔 끼워요) ─────────────
+def _fetch_all(sql: str, params) -> list[dict]:
+    from lib.db import fetch_all
+
+    return fetch_all(sql, params)
+
+
+def _user_allergies(user_id: str) -> list[str]:
+    """preferences(kind='allergy')의 값 → 레시피 allergens 이름 (예: '계란' → '달걀')."""
+    names: set[str] = set()
+    for row in _fetch_all(_ALLERGY_SQL, (user_id,)):
+        names.update(normalize_allergy(row["value"]))
+    return sorted(names)
+
+
+def _user_have(user_id: str) -> list[str]:
+    from lib.inventory import get_inventory
+
+    return [i.name for i in get_inventory(user_id)]
+
+
+def _catalog():
+    from lib.inventory import get_catalog
+
+    return get_catalog()
+
+
+def _embed(text: str) -> str:
+    from lib.embeddings import embed_query, to_pgvector
+
+    return to_pgvector(embed_query(text))
+
+
+def _to_recipe(row: dict) -> Recipe:
+    return Recipe(
+        id=str(row["id"]),
+        title=row["title"],
         ingredients=[
-            RecipeIngredient("연두부", 75, "g"),
-            RecipeIngredient("칵테일새우", 20, "g"),
-            RecipeIngredient("달걀", 30, "g"),
-            RecipeIngredient("생크림", 13, "g"),
-            RecipeIngredient("설탕", 5, "g"),
-            RecipeIngredient("무염버터", 5, "g"),
-            RecipeIngredient("시금치", 10, "g", optional=True),  # 고명
+            RecipeIngredient(
+                name=i.get("name", ""), qty=i.get("qty"), unit=i.get("unit"), optional=bool(i.get("optional"))
+            )
+            for i in (row["ingredients"] or [])
         ],
-        steps=(
-            "1. 손질된 새우를 끓는 물에 데쳐 건진다.\n"
-            "2. 연두부, 달걀, 생크림, 설탕에 녹인 무염버터를 믹서에 넣고 간 뒤 새우를 함께 섞어 그릇에 담는다.\n"
-            "3. 시금치를 잘게 다져 그릇에 뿌리고 찜기에 넣고 중간 불에서 10분 정도 찐다."
-        ),
-        cook_minutes=20,
-        servings=1,
-        tags=["반찬", "찌기", "연두부"],
-        allergens=["달걀", "우유", "대두", "새우"],  # lib/allergens.py 이름·순서
-        image_url=_IMG.format(seq=28),
-    ),
-    Recipe(
-        id="fake-37",
-        title="된장국",
-        ingredients=[
-            RecipeIngredient("두부", 20, "g"),
-            RecipeIngredient("애느타리버섯", 20, "g"),
-            RecipeIngredient("감자", 10, "g"),
-            RecipeIngredient("양파", 10, "g"),
-            RecipeIngredient("대파", 10, "g"),
-            RecipeIngredient("된장", 5, "g"),
-            RecipeIngredient("물", 300, "ml"),
-        ],
-        steps=(
-            "1. 감자, 양파는 얇게 썰고 애느타리버섯은 썰어 달궈진 팬에 굽는다.\n"
-            "2. 냄비에 물을 붓고 된장을 푼 뒤 감자, 양파, 두부를 넣어 끓인 후 건더기를 믹서에 갈아 다시 넣고 한 번 더 끓인다.\n"
-            "3. 구운 애느타리버섯과 대파를 넣어 끓인 후 그릇에 담는다."
-        ),
-        cook_minutes=15,
-        servings=1,
-        tags=["국&찌개", "끓이기"],
-        allergens=["대두"],
-        image_url=_IMG.format(seq=37),
-    ),
-    Recipe(
-        id="fake-32",
-        title="순두부 사과 소스 오이무침",
-        ingredients=[
-            RecipeIngredient("오이", 70, "g"),
-            RecipeIngredient("땅콩", 10, "g"),
-            RecipeIngredient("순두부", 40, "g"),
-            RecipeIngredient("사과", 50, "g"),
-        ],
-        steps=(
-            "1. 사과, 순두부를 믹서에 넣고 곱게 갈아 소스를 만든다.\n"
-            "2. 오이는 소금으로 문질러 씻어 반을 갈라 씨를 제거하고 어슷썰기를 한다.\n"
-            "3. 썰어 놓은 오이에 순두부사과 소스를 넣고 버무린 후 다진 땅콩을 뿌려 마무리한다."
-        ),
-        cook_minutes=10,
-        servings=1,
-        tags=["반찬", "기타", "순두부"],
-        allergens=["땅콩", "대두"],
-        image_url=_IMG.format(seq=32),
-    ),
-]
+        steps=row["steps"],
+        cook_minutes=row["cook_minutes"],
+        servings=row["servings"],
+        tags=list(row["tags"] or []),
+        allergens=list(row["allergens"] or []),
+        image_url=row.get("image_url"),
+    )
 
 
-def _same_ingredient(a: str, b: str) -> bool:
-    """가짜 버전의 간단한 이름 맞추기: 한쪽 이름이 다른 쪽에 들어 있으면 같은 재료.
-    (예: '두부' ↔ '연두부'. 진짜 버전은 카탈로그 별칭으로 맞춰요)"""
-    a, b = a.strip(), b.strip()
-    return bool(a and b) and (a in b or b in a)
+def _candidates(
+    query: str, ingredients: list[str], allergies: list[str], max_minutes: Optional[int]
+) -> list[Recipe]:
+    filters = (allergies, max_minutes, max_minutes)
+    try:
+        vec = _embed(query)
+    except Exception as e:  # Bedrock 설정·권한 문제 등 → 글자 검색으로 대신
+        log.warning("레시피 임베딩 검색을 못 해서 글자 검색으로 바꿔요: %s: %s", type(e).__name__, e)
+        if not ingredients:
+            return []
+        patterns = [f"%{name.strip()}%" for name in ingredients if name.strip()]
+        rows = _fetch_all(_TEXT_SQL, (*filters, patterns, CANDIDATES))
+    else:
+        rows = _fetch_all(_VECTOR_SQL, (*filters, vec, CANDIDATES))
+    return [_to_recipe(r) for r in rows]
 
 
+# ── 팀 공용 함수 ─────────────────────────────────────
 def search_recipes(
     user_id: str,
     ingredients: list[str],
@@ -104,30 +117,30 @@ def search_recipes(
     servings: Optional[int] = None,
     tags: Optional[list[str]] = None,
 ) -> list[RecipeMatch]:
-    """임박 재료(ingredients)를 많이 쓰는 레시피부터 돌려줘요.
+    """임박 재료(ingredients)를 쓰는 레시피를 점수 순으로 (최대 30개).
 
-    - user_id: 알레르기 제외에 쓸 자리 (가짜 버전은 받기만 해요)
+    - user_id: 이 사용자의 알레르기 레시피는 빼고, 재고로 보유 비율·없는 재료를 계산해요
     - ingredients: 임박 재료 이름 목록, 예: ["두부", "우유"]
-    - max_minutes: 주어지면 조리 시간이 이보다 긴 레시피는 빼요
-    - servings: 몇 인분인지 (가짜 버전은 받기만 해요)
-    - tags: 일치하는 태그마다 점수 +1 (거르지는 않아요)
+    - max_minutes: 주어지면 조리 시간(추정)이 이보다 긴 레시피는 빼요 (바쁜 날은 recipe_rules.BUSY_MAX_MINUTES)
+    - servings: 몇 인분인지. 지금 레시피는 모두 1인분이라 받기만 해요 (인분 배수는 Phase 5)
+    - tags: 일치하는 태그마다 점수 +1 (예: ["고단백"]). 거르지는 않아요
 
-    점수 = 임박 재료 사용 수 × 3 + 태그 일치 수 × 1. 점수가 높은 순, 같으면 제목 순.
-    가짜 버전의 missing 은 항상 빈 목록이에요 (재고 전체를 보지 않기 때문).
+    ingredients 와 tags 가 둘 다 비어 있으면 빈 목록이에요.
     """
-    wanted_tags = set(tags or [])
-    matches: list[RecipeMatch] = []
-    for recipe in _FAKE_RECIPES:
-        if max_minutes is not None and recipe.cook_minutes is not None and recipe.cook_minutes > max_minutes:
-            continue
-        uses = [
-            name
-            for name in ingredients
-            if any(_same_ingredient(name, ing.name) for ing in recipe.ingredients)
-        ]
-        tag_hits = len(wanted_tags & set(recipe.tags))
-        score = float(len(uses) * EXPIRING_WEIGHT + tag_hits * TAG_WEIGHT)
-        matches.append(RecipeMatch(recipe=recipe, score=score, uses_expiring=uses, missing=[]))
+    ingredients = [n for n in (ingredients or []) if n and n.strip()]
+    tags = [t for t in (tags or []) if t and t.strip()]
+    query = " ".join([*ingredients, *tags])
+    if not query:
+        return []
 
-    matches.sort(key=lambda m: (-m.score, m.recipe.title))
-    return matches
+    allergies = _user_allergies(user_id)
+    recipes = _candidates(query, ingredients, allergies, max_minutes)
+    if not recipes:
+        return []
+    have, catalog = _user_have(user_id), _catalog()
+    matches = [
+        score_recipe(r, ingredients, have, tags, catalog)
+        for r in recipes
+        if not has_allergen(r, allergies)  # SQL 로 뺐지만 한 번 더
+    ]
+    return rank(matches)
