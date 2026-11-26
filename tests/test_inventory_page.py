@@ -1,5 +1,6 @@
 """재고 화면을 DB 없이 가짜 데이터로 돌려 보는 테스트 (Streamlit AppTest)."""
 from datetime import date
+from pathlib import Path
 
 import pytest
 from streamlit.testing.v1 import AppTest
@@ -10,6 +11,8 @@ from lib.models import AppUser, CatalogItem, InventoryItem
 
 TODAY = date(2026, 11, 26)
 USER = AppUser("user-1", "a@example.com")
+# 새 Streamlit은 상대 경로를 테스트 파일 위치 기준으로 찾아서, 절대 경로로 줘요
+PAGE = str(Path(__file__).resolve().parent.parent / "views" / "inventory.py")
 CATALOG = [
     CatalogItem(1, "두부", [], "달걀·두부", 5, "fridge"),
     CatalogItem(2, "대파", ["파"], "채소", 10, "fridge"),
@@ -46,7 +49,7 @@ def store(monkeypatch):
 
 
 def run_page():
-    at = AppTest.from_file("views/inventory.py", default_timeout=60)
+    at = AppTest.from_file(PAGE, default_timeout=60)
     at.session_state["user"] = USER
     at.run()
     assert not at.exception, at.exception
@@ -86,7 +89,7 @@ def test_add_without_name_shows_error(store):
 
 
 def test_page_requires_login(store):
-    at = AppTest.from_file("views/inventory.py", default_timeout=60)
+    at = AppTest.from_file(PAGE, default_timeout=60)
     at.run()
     assert "로그인이 필요" in at.warning[0].value
     assert not at.title  # 재고 내용은 안 보임
