@@ -1,0 +1,10 @@
+import streamlit as st
+
+from lib.ui import coming_soon
+
+st.title("달력")
+st.caption("내 일정과 유통기한 임박 재료를 한눈에 봐요.")
+coming_soon(
+    "Phase 5",
+    ["일정 등록 (바쁜 날 / 운동 / 손님)", "날짜별 임박 재료 표시", "날짜를 누르면 그날 맞춤 추천"],
+)
