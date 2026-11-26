@@ -76,8 +76,9 @@ class Recipe:
     servings: Optional[int] = None
     tags: list[str] = field(default_factory=list)
     allergens: list[str] = field(default_factory=list)
-    source_name: Optional[str] = None
-    source_url: Optional[str] = None
+    source_name: Optional[str] = None  # 쓰지 않음 (출처는 앱 전체 한 줄로 표시, PLAN 5장 ③)
+    source_url: Optional[str] = None  # 쓰지 않음
+    image_url: Optional[str] = None  # 완성 사진 (https), 없으면 None
 
 
 @dataclass
