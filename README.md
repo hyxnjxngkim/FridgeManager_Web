@@ -3,7 +3,7 @@
 기획은 [PLAN.md](PLAN.md), 팀 작업 방식은 PLAN.md 11장을 보세요.
 
 ## 스택
-Python 3.9+ · Streamlit · Supabase (Postgres + pgvector + Auth) · Claude API · pytest
+Python 3.9+ · Streamlit · AWS RDS PostgreSQL 18 + pgvector (`fridge` 스키마) · psycopg 3 · bcrypt · Claude API · pytest
 배포: AWS EC2 (systemd, `deploy/fridge-app.service`)
 
 ## 처음 실행하기
@@ -13,15 +13,21 @@ Python 3.9+ · Streamlit · Supabase (Postgres + pgvector + Auth) · Claude API 
    source .venv/bin/activate
    pip install -r requirements-dev.txt
    ```
-   > Anaconda(Intel 모드) Python에서 `cryptography` 설치가 실패하면:
-   > `pip install --only-binary=cryptography,cffi -r requirements-dev.txt`
-2. Supabase 프로젝트를 만들고, SQL Editor에서 `supabase/migrations/`의 SQL 파일을 번호 순서대로(0001 → 0002 …) 실행해요.
-   - 개발 중에는 Authentication > Sign In / Providers > Email 에서 **Confirm email**을 꺼 두면 가입하자마자 로그인돼요.
-3. 환경변수 파일을 만들고 값을 채워요 (Supabase > Settings > API).
+   > Anaconda(Intel 모드) Python에서 `cryptography`/`bcrypt` 설치가 실패하면:
+   > `pip install --only-binary=:all: -r requirements-dev.txt`
+2. 환경변수 파일을 만들고 값을 채워요. DB 비밀번호(`fridge_app` 계정)는 팀 리더에게 안전한 경로로 받아요.
    ```bash
    cp .env.example .env
    ```
-4. 실행 → http://localhost:8501
+3. RDS는 EC2에서만 접속되므로, **다른 터미널에서 SSH 터널을 열어 둬요** (`localhost:5433` → RDS).
+   ```bash
+   ./scripts/tunnel.sh
+   ```
+4. 테이블을 만들어요 (이미 만들어져 있으면 "모두 최신이에요"만 나와요).
+   ```bash
+   python scripts/migrate.py
+   ```
+5. 실행 → http://localhost:8501
    ```bash
    streamlit run app.py
    ```
@@ -30,8 +36,15 @@ Python 3.9+ · Streamlit · Supabase (Postgres + pgvector + Auth) · Claude API 
 ```bash
 pytest
 ```
+DB 없이 돌아가요 (터널 불필요).
 - `tests/test_dates.py`, `tests/test_inventory_rules.py`: 날짜·유통기한 계산 규칙
-- `tests/test_inventory_page.py`: 재고 화면을 가짜 데이터로 실행 (Supabase 없이)
+- `tests/test_passwords.py`: 비밀번호 암호화
+- `tests/test_inventory_page.py`: 재고 화면을 가짜 데이터로 실행
+
+## DB 구조 바꾸기
+1. `db/`에 다음 번호 파일을 만들어요 (예: `db/0003_recipes_search.sql`). **이미 실행된 파일은 고치지 않아요.**
+2. `python scripts/migrate.py`로 실행해요. `--status`로 실행 여부를 볼 수 있어요.
+3. 사용자 데이터 테이블은 RLS가 없으니, 코드에서 항상 `where user_id = %s`로 걸러요.
 
 ## 폴더 구조
 ```
@@ -40,22 +53,27 @@ views/                 화면 (페이지 하나 = 파일 하나)
   home.py inventory.py upload.py chat.py plan.py calendar.py dashboard.py settings.py login.py
 lib/                   로직
   config.py            .env 읽기
-  db.py                Supabase 클라이언트 (사용자 세션별)
-  auth.py              로그인·회원가입·로그아웃
-  models.py            팀 공용 데이터 모양 (InventoryItem, Recipe, RecipeMatch …)
+  db.py                PostgreSQL 연결 풀, fetch_all / fetch_one / execute
+  auth.py              로그인·회원가입·로그아웃, require_user()
+  passwords.py         bcrypt 해시 — 순수 함수
+  models.py            팀 공용 데이터 모양 (AppUser, InventoryItem, Recipe, RecipeMatch …)
   dates.py             날짜 계산 (한국 시간 기준) — 순수 함수
   catalog.py           재료 카탈로그 매칭 — 순수 함수
   inventory_rules.py   입력 검사·유통기한 결정 — 순수 함수
   inventory.py         재고 DB 읽기·쓰기, get_expiring()
   ui.py                공용 화면 조각
+db/                    SQL 마이그레이션 (번호 순서)
+scripts/
+  migrate.py           db/*.sql 실행
+  tunnel.sh            로컬 개발용 SSH 터널
 tests/                 pytest
-supabase/migrations/   DB 스키마 + RLS + 시드
 deploy/                EC2 systemd 서비스 파일
 ```
 
 ## EC2 배포 (main 브랜치만)
+서버의 `.env`는 로컬과 두 줄이 달라요: `PG_HOST=<RDS 주소>`, `PG_PORT=5432` (터널 없이 바로 접속).
 ```bash
 rsync -az --exclude .venv --exclude .git --exclude .env ./ ec2-user@<서버>:/home/ec2-user/fridge-manager/
-ssh ec2-user@<서버> 'cd ~/fridge-manager && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && sudo systemctl restart fridge-app'
+ssh ec2-user@<서버> 'cd ~/fridge-manager && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python scripts/migrate.py && sudo systemctl restart fridge-app'
 ```
-서버의 `.env`는 따로 올려요 (git에 없음). 서비스 파일 설치는 `deploy/fridge-app.service` 참고.
+서비스 파일 설치는 `deploy/fridge-app.service` 참고.

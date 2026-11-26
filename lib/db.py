@@ -1,16 +1,70 @@
-"""Supabase 클라이언트.
+"""PostgreSQL(AWS RDS) 연결.
 
-접속한 사람(브라우저 세션)마다 클라이언트를 따로 만들어 st.session_state 에 보관합니다.
-로그인하면 그 사람의 토큰이 클라이언트에 실리고, DB의 RLS(행 단위 보안) 덕분에
-본인 데이터만 읽고 쓸 수 있어요.
+- 앱(Streamlit): fetch_all / fetch_one / execute 를 쓰세요. 연결 풀을 공유해요.
+- 스크립트: connect() 로 연결 하나를 직접 열어요 (scripts/migrate.py).
+
+⚠️ RLS(행 단위 보안)가 없으니, 사용자 데이터를 다루는 SQL에는
+   반드시 "where user_id = %s" 조건을 붙이세요.
 """
-import streamlit as st
-from supabase import Client, create_client
+from __future__ import annotations
 
-from lib.config import SUPABASE_ANON_KEY, SUPABASE_URL
+from typing import Any, Optional, Sequence
+
+import psycopg
+from psycopg.conninfo import make_conninfo
+from psycopg.rows import dict_row
+
+from lib.config import PG_DB, PG_HOST, PG_PASSWORD, PG_PORT, PG_SCHEMA, PG_USER
 
 
-def get_client() -> Client:
-    if "supabase" not in st.session_state:
-        st.session_state.supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    return st.session_state.supabase
+def conninfo() -> str:
+    return make_conninfo(
+        host=PG_HOST,
+        port=PG_PORT,
+        dbname=PG_DB,
+        user=PG_USER,
+        password=PG_PASSWORD,
+        connect_timeout=10,
+        application_name="fridge-manager",
+        options=f"-c search_path={PG_SCHEMA},public",  # 테이블은 fridge, pgvector 는 public
+    )
+
+
+def connect() -> psycopg.Connection:
+    """연결 하나 (스크립트용)."""
+    return psycopg.connect(conninfo())
+
+
+def _pool():
+    # streamlit 은 앱에서만 필요해서 여기서 불러와요 (스크립트는 streamlit 없이도 동작)
+    import streamlit as st
+    from psycopg_pool import ConnectionPool
+
+    @st.cache_resource(show_spinner=False)
+    def make_pool() -> ConnectionPool:
+        return ConnectionPool(
+            conninfo(),
+            min_size=1,
+            max_size=5,
+            kwargs={"row_factory": dict_row},
+            check=ConnectionPool.check_connection,  # 터널이 끊겼다 붙어도 다시 연결
+            open=True,
+        )
+
+    return make_pool()
+
+
+def fetch_all(sql: str, params: Sequence[Any] = ()) -> list[dict]:
+    with _pool().connection() as conn:
+        return conn.execute(sql, params).fetchall()
+
+
+def fetch_one(sql: str, params: Sequence[Any] = ()) -> Optional[dict]:
+    with _pool().connection() as conn:
+        return conn.execute(sql, params).fetchone()
+
+
+def execute(sql: str, params: Sequence[Any] = ()) -> int:
+    """INSERT/UPDATE/DELETE. 바뀐 행 수를 돌려줘요. (블록이 끝나면 자동 커밋)"""
+    with _pool().connection() as conn:
+        return conn.execute(sql, params).rowcount

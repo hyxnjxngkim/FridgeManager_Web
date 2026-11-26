@@ -7,10 +7,15 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+PG_HOST = os.getenv("PG_HOST", "")
+PG_PORT = int(os.getenv("PG_PORT", "5432"))
+PG_DB = os.getenv("PG_DB", "")
+PG_USER = os.getenv("PG_USER", "")
+PG_PASSWORD = os.getenv("PG_PASSWORD", "")
+PG_SCHEMA = os.getenv("PG_SCHEMA", "fridge")
+
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 
-def is_supabase_configured() -> bool:
-    return bool(SUPABASE_URL and SUPABASE_ANON_KEY)
+def is_db_configured() -> bool:
+    return bool(PG_HOST and PG_DB and PG_USER and PG_PASSWORD)

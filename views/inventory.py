@@ -4,6 +4,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from lib.auth import require_user
 from lib.catalog import estimate_expiry, match_catalog
 from lib.dates import parse_date, today_kst
 from lib.inventory import (
@@ -23,9 +24,10 @@ STORAGE_LABEL = {"fridge": "냉장", "freezer": "냉동", "room": "실온"}
 SOURCE_LABEL = {"estimated": "추정", "label": "라벨", "manual": "직접 입력"}
 ACTIONS = ["다 먹음", "버림", "삭제"]
 
+user = require_user()
 today = today_kst()
 catalog = get_catalog()
-items = get_inventory()
+items = get_inventory(user.id)
 
 # 지난 실행에서 남긴 결과 메시지
 if msg := st.session_state.pop("inventory_msg", None):
@@ -57,6 +59,7 @@ def on_add() -> None:
     s = st.session_state
     try:
         add_item(
+            user.id,
             ItemInput(
                 name=s.add_name or "",
                 quantity=s.add_qty,
@@ -182,12 +185,12 @@ if actions or updates:
         errors = []
         for item_id, action in actions:
             if action == "삭제":
-                delete_item(item_id)
+                delete_item(user.id, item_id)
             else:
-                set_status(item_id, "used" if action == "다 먹음" else "discarded")
+                set_status(user.id, item_id, "used" if action == "다 먹음" else "discarded")
         for item_id, changed in updates:
             try:
-                update_item(by_id[item_id], changed)
+                update_item(user.id, by_id[item_id], changed)
             except ValueError as e:
                 errors.append(f"{by_id[item_id].name}: {e}")
         if errors:

@@ -14,7 +14,7 @@ with center:
             email = st.text_input("이메일", autocomplete="email")
             password = st.text_input("비밀번호", type="password", autocomplete="current-password")
             if st.form_submit_button("로그인", type="primary", width="stretch"):
-                error = sign_in(email.strip(), password)
+                error = sign_in(email, password)
                 if error:
                     st.error(error)
                 else:
@@ -24,13 +24,11 @@ with center:
         with st.form("signup"):
             email = st.text_input("이메일", autocomplete="email")
             password = st.text_input(
-                "비밀번호 (6자 이상)", type="password", autocomplete="new-password"
+                "비밀번호 (8자 이상)", type="password", autocomplete="new-password"
             )
             if st.form_submit_button("회원가입", width="stretch"):
-                error, message = sign_up(email.strip(), password)
+                error = sign_up(email, password)
                 if error:
                     st.error(error)
-                elif message:
-                    st.success(message)
                 else:
                     st.rerun()

@@ -2,6 +2,7 @@
 -- 기준: 구입 직후 권장 보관 방법(storage)으로 보관했을 때의 대략적인 일수입니다.
 --       실제 제품 라벨과 다를 수 있어 앱에서는 "추정"으로 표시하고 사용자가 고칠 수 있게 합니다.
 -- 여러 번 실행해도 안전합니다 (이미 있는 이름은 건너뜀).
+-- 실행: python scripts/migrate.py
 
 insert into ingredient_catalog (name, aliases, category, default_shelf_days, storage) values
 -- 채소

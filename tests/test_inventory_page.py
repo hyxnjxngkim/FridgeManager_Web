@@ -1,4 +1,4 @@
-"""재고 화면을 Supabase 없이 가짜 데이터로 돌려 보는 테스트 (Streamlit AppTest)."""
+"""재고 화면을 DB 없이 가짜 데이터로 돌려 보는 테스트 (Streamlit AppTest)."""
 from datetime import date
 
 import pytest
@@ -6,9 +6,10 @@ from streamlit.testing.v1 import AppTest
 
 import lib.inventory as inv
 from lib.inventory_rules import ItemInput, expiry_for_new, validate
-from lib.models import CatalogItem, InventoryItem
+from lib.models import AppUser, CatalogItem, InventoryItem
 
 TODAY = date(2026, 11, 26)
+USER = AppUser("user-1", "a@example.com")
 CATALOG = [
     CatalogItem(1, "두부", [], "달걀·두부", 5, "fridge"),
     CatalogItem(2, "대파", ["파"], "채소", 10, "fridge"),
@@ -24,7 +25,8 @@ def store(monkeypatch):
     ]
     calls: list[tuple] = []
 
-    def fake_add(item: ItemInput):
+    def fake_add(user_id: str, item: ItemInput):
+        assert user_id == USER.id
         item = validate(item)
         expires, source, match = expiry_for_new(item, CATALOG)
         items.append(
@@ -34,17 +36,18 @@ def store(monkeypatch):
         calls.append(("add", item.name, expires))
 
     monkeypatch.setattr(inv, "get_catalog", lambda: CATALOG)
-    monkeypatch.setattr(inv, "get_inventory", lambda: list(items))
+    monkeypatch.setattr(inv, "get_inventory", lambda user_id: [i for i in items if user_id == USER.id])
     monkeypatch.setattr(inv, "add_item", fake_add)
-    monkeypatch.setattr(inv, "set_status", lambda i, s: calls.append(("status", i, s)))
-    monkeypatch.setattr(inv, "delete_item", lambda i: calls.append(("delete", i)))
-    monkeypatch.setattr(inv, "update_item", lambda o, c: calls.append(("update", o.id)))
+    monkeypatch.setattr(inv, "set_status", lambda u, i, s: calls.append(("status", i, s)))
+    monkeypatch.setattr(inv, "delete_item", lambda u, i: calls.append(("delete", i)))
+    monkeypatch.setattr(inv, "update_item", lambda u, o, c: calls.append(("update", o.id)))
     monkeypatch.setattr("lib.dates.today_kst", lambda now=None: TODAY)
     return items, calls
 
 
 def run_page():
     at = AppTest.from_file("views/inventory.py", default_timeout=60)
+    at.session_state["user"] = USER
     at.run()
     assert not at.exception, at.exception
     return at
@@ -80,3 +83,10 @@ def test_add_without_name_shows_error(store):
     at.run()
     assert not calls
     assert "재료 이름을 입력" in at.error[0].value
+
+
+def test_page_requires_login(store):
+    at = AppTest.from_file("views/inventory.py", default_timeout=60)
+    at.run()
+    assert "로그인이 필요" in at.warning[0].value
+    assert not at.title  # 재고 내용은 안 보임

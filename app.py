@@ -6,24 +6,24 @@
 import streamlit as st
 
 from lib.auth import current_user, sign_out
-from lib.config import is_supabase_configured
+from lib.config import is_db_configured
 
 st.set_page_config(page_title="냉장고를 부탁해", page_icon="🧊", layout="wide")
 
 
 def setup_notice() -> None:
-    st.title("Supabase 설정이 필요해요")
+    st.title("DB 설정이 필요해요")
     st.markdown(
         """
-1. supabase.com에서 프로젝트를 만들어요.
-2. `.env.example`을 `.env`로 복사하고 `SUPABASE_URL`, `SUPABASE_ANON_KEY`를 채워요.
-3. SQL Editor에서 `supabase/migrations/`의 SQL 파일을 번호 순서대로 실행해요.
+1. `.env.example`을 `.env`로 복사하고 `PG_*` 값(앱 전용 계정 fridge_app)을 채워요.
+2. 로컬이면 `./scripts/tunnel.sh`로 RDS 터널을 열어요.
+3. `python scripts/migrate.py`로 테이블을 만들어요.
 4. 앱을 다시 시작해요 (`streamlit run app.py`).
 """
     )
 
 
-if not is_supabase_configured():
+if not is_db_configured():
     setup_notice()
     st.stop()
 
