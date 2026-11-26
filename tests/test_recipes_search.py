@@ -92,6 +92,12 @@ def test_falls_back_to_text_search_when_embedding_fails(fake_db):
     assert results
 
 
+def test_recipes_without_any_expiring_ingredient_are_dropped(fake_db):
+    titles = [m.recipe.title for m in rec.search_recipes(USER_ID, ["대파"])]
+    assert titles == ["된장국"]  # 대파를 쓰는 레시피만
+    assert rec.search_recipes(USER_ID, ["딸기"]) == []
+
+
 def test_tags_only_query_and_empty_query(fake_db):
     assert rec.search_recipes(USER_ID, [], tags=["다이어트"])  # 태그만으로도 검색
     assert rec.search_recipes(USER_ID, []) == []

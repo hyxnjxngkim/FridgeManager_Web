@@ -125,6 +125,7 @@ def search_recipes(
     - servings: 몇 인분인지. 지금 레시피는 모두 1인분이라 받기만 해요 (인분 배수는 Phase 5)
     - tags: 일치하는 태그마다 점수 +1 (예: ["고단백"]). 거르지는 않아요
 
+    ingredients 가 있으면 그중 하나 이상을 쓰는 레시피만 돌려줘요 (구출 레시피).
     ingredients 와 tags 가 둘 다 비어 있으면 빈 목록이에요.
     """
     ingredients = [n for n in (ingredients or []) if n and n.strip()]
@@ -143,4 +144,6 @@ def search_recipes(
         for r in recipes
         if not has_allergen(r, allergies)  # SQL 로 뺐지만 한 번 더
     ]
+    if ingredients:  # 구출 레시피: 임박 재료를 하나도 안 쓰는 레시피는 빼요
+        matches = [m for m in matches if m.uses_expiring]
     return rank(matches)

@@ -1,2 +1,4 @@
 -r requirements.txt
 pytest>=8
+# 로컬에서 `aws login` 자격 증명으로 Bedrock(임베딩)을 부를 때 필요 (EC2는 서버 역할이라 필요 없음)
+botocore[crt]
