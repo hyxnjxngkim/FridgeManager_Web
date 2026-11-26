@@ -1,8 +1,9 @@
-"""레시피 검색 연결점 — Phase 4(A)는 이 파일을 통해서만 레시피를 찾아요.
+"""레시피 검색 연결점 — A의 화면·에이전트·식단은 이 파일을 통해서만 레시피를 찾아요.
 
 B의 lib/recipes.search_recipes() (Phase 3)를 부르고, 그 결과에서 알레르기 재료가 든 레시피를
 **한 번 더** 걸러요. B의 검색도 알레르기를 거르기로 약속돼 있지만(PLAN 5장 ③),
 알레르기는 실수하면 위험해서 에이전트 쪽에서도 막아요 (이중 안전장치).
+그다음 내 평가·최근 먹은 기록·좋아함/싫어함으로 순서를 개인화해요 (lib/personalize.py, Phase 6).
 """
 from __future__ import annotations
 
@@ -73,7 +74,13 @@ def search_recipes(
     servings: Optional[int] = None,
     tags: Optional[list[str]] = None,
 ) -> list[RecipeMatch]:
-    from lib.preferences import get_allergies
+    from lib.dates import today_kst
+    from lib.feedback import recipe_history
+    from lib.personalize import personalize
+    from lib.preferences import get_preferences
 
+    prefs = get_preferences(user_id)
+    allergies = [p.value for p in prefs if p.kind == "allergy"]
     matches = recipes.search_recipes(user_id, ingredients, max_minutes=max_minutes, servings=servings, tags=tags)
-    return filter_allergens(matches, get_allergies(user_id))
+    safe = filter_allergens(matches, allergies)
+    return personalize(safe, recipe_history(user_id), prefs, today_kst())
