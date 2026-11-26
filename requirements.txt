@@ -1,0 +1,6 @@
+streamlit>=1.50,<2
+supabase>=2.33,<3
+python-dotenv>=1.0
+tzdata>=2024.1
+# Phase 2부터 사용
+# anthropic>=0.70

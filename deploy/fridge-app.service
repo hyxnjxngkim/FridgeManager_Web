@@ -1,17 +1,13 @@
 [Unit]
-Description=FridgeManager Next.js app
+Description=FridgeManager Streamlit app
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 User=ec2-user
-WorkingDirectory=/home/ec2-user/fridge-manager/.next/standalone
-Environment=NODE_ENV=production
-Environment=PORT=8501
-Environment=HOSTNAME=0.0.0.0
-# 서버 전용 비밀값(ANTHROPIC_API_KEY 등). 파일이 없으면 무시됨.
-EnvironmentFile=-/home/ec2-user/fridge-manager/.env.local
-ExecStart=/usr/bin/node server.js
+WorkingDirectory=/home/ec2-user/fridge-manager
+# 비밀값은 /home/ec2-user/fridge-manager/.env 에서 앱이 직접 읽어요
+ExecStart=/home/ec2-user/fridge-manager/.venv/bin/streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
 Restart=always
 RestartSec=5
 

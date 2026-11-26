@@ -17,18 +17,19 @@
 
 | 영역 | 선택 | 이유 |
 |---|---|---|
-| 프레임워크 | **Next.js 15 (App Router) + TypeScript** | 프론트·API를 한 프로젝트에서, AI가 가장 잘 아는 스택 |
-| UI | **Tailwind CSS + shadcn/ui** | 컴포넌트 복붙 수준으로 빠르게 |
-| DB / 인증 / 파일 | **Supabase** (Postgres + **pgvector** + Auth + Storage) | pgvector 내장, 로그인·이미지 저장까지 한 곳에서 |
-| LLM | **Claude API** (`@anthropic-ai/sdk`) | 비전 + 툴 사용(에이전트) |
+| 언어 | **Python 3.9+** | 팀이 아는 언어. 바이브코딩이라도 코드를 읽고 고칠 수 있어야 함 |
+| 화면 | **Streamlit** (`st.navigation` 멀티 페이지) | Python만으로 표·폼·채팅·차트·사진 업로드까지 기본 제공 |
+| DB / 인증 / 파일 | **Supabase** (Postgres + **pgvector** + Auth + Storage), `supabase` 파이썬 라이브러리 | pgvector 내장, 로그인·이미지 저장까지 한 곳에서 |
+| LLM | **Claude API** (`anthropic` 파이썬 SDK) | 비전 + 툴 사용(에이전트) |
 | ├ 영수증 OCR | `claude-haiku-5-5` | 글자 위주라 싸고 빠른 모델로 충분 |
 | ├ 냉장고 사진 | `claude-sonnet-5-5` | 여러 재료 동시 인식은 더 강한 모델 |
 | └ 추천 에이전트 | `claude-sonnet-5-5` | 툴 호출·추론 |
 | 임베딩 | Voyage AI 등 임베딩 API (1024차원 등) | Claude는 임베딩 모델이 없으므로 별도 사용 |
-| 달력 | **FullCalendar** (자체 일정) → 2단계에 Google Calendar 연동 | 처음엔 앱 안 일정으로 시작해 OAuth 부담 제거 |
-| 차트 | Recharts | 대시보드 |
-| 알림 | 앱 내 배너 + (선택) Supabase Cron → 이메일/웹푸시 | |
-| 배포 | **AWS** (마지막 단계, standalone 빌드 → App Runner/ECS 또는 Amplify) + Supabase | |
+| 달력 | **streamlit-calendar** 컴포넌트 (자체 일정) → 나중에 Google Calendar 연동 | 처음엔 앱 안 일정으로 시작해 OAuth 부담 제거 |
+| 차트 | Streamlit 기본 차트 (`st.bar_chart` 등) | 대시보드 |
+| 알림 | 앱 내 배너 + (선택) Supabase Cron → 이메일 | |
+| 테스트 | **pytest** + Streamlit `AppTest` | 계산 로직과 화면을 Supabase 없이 검사 |
+| 배포 | **AWS EC2** (`streamlit run` + systemd, `deploy/fridge-app.service`) + Supabase | |
 
 > 💡 처음부터 Google Calendar·푸시 알림까지 하지 말고, **앱 내 달력 + 앱 내 알림**으로 MVP를 먼저 끝내세요.
 
@@ -37,10 +38,10 @@
 ## 3. 전체 구조
 
 ```
-[브라우저]
-  ├─ 재고 페이지 ── 영수증/사진 업로드 ──▶ /api/ingest ──▶ Claude(Haiku/Sonnet) ──▶ 확인 화면 ──▶ inventory 저장
-  ├─ 달력 페이지 ── 일정 + 유통기한 임박 표시
-  ├─ 채팅(에이전트) ─▶ /api/agent ──▶ Claude Sonnet + Tools
+[브라우저] ⇄ [Streamlit 서버 (Python)]  ← 화면과 로직이 모두 서버의 Python 코드
+  ├─ views/inventory.py, upload.py ── 영수증/사진 ──▶ lib/ingest.py ──▶ Claude(Haiku/Sonnet) ──▶ 확인 표 ──▶ inventory 저장
+  ├─ views/calendar.py ── 일정 + 유통기한 임박 표시
+  ├─ views/chat.py ─▶ lib/agent.py ──▶ Claude Sonnet + Tools
   │                                     ├─ get_inventory / get_expiring
   │                                     ├─ search_recipes (pgvector)
   │                                     ├─ get_schedule / get_preferences
@@ -52,7 +53,7 @@
 ```
 
 **핵심 설계 원칙**
-1. **LLM은 "추출·판단"만, 계산은 코드로.** 유통기한 날짜 계산, 재고 차감, 통계는 전부 SQL/TS 코드가 처리. LLM에 맡기면 숫자가 틀립니다.
+1. **LLM은 "추출·판단"만, 계산은 코드로.** 유통기한 날짜 계산, 재고 차감, 통계는 전부 SQL/Python 코드가 처리. LLM에 맡기면 숫자가 틀립니다.
 2. **AI 결과는 항상 "확인 후 저장".** 영수증 인식 결과는 바로 저장하지 말고 편집 가능한 표로 보여준 뒤 저장 버튼.
 3. **에이전트 = Claude + 툴.** 채팅에서 "이거 만들게"라고 하면 Claude가 `cook_recipe` 툴을 호출하는 구조. 기능을 툴 단위로 쪼개면 바이브코딩도 쉬워집니다.
 
@@ -151,7 +152,7 @@ create table shopping_items (
 ## 5. 기능별 설계
 
 ### ① 재료 등록 (영수증 / 냉장고 사진)
-- **흐름**: 업로드 → Supabase Storage 저장 → `/api/ingest` 호출 → Claude가 JSON 반환 → **편집 가능한 확인 표** → 저장
+- **흐름**: `st.file_uploader`/`st.camera_input`으로 업로드 → `lib/ingest.py`가 Claude 호출 → JSON 반환 → **`st.data_editor` 확인 표** → 저장
 - **모델 분기**: 업로드 시 "영수증 / 냉장고 사진" 탭을 사용자가 고르게 하면 분기 로직이 단순 (자동 판별은 나중에)
 - **출력 형식 고정**: 툴 사용(또는 JSON 스키마)으로 아래 형태만 받도록
   ```json
@@ -239,18 +240,21 @@ create table shopping_items (
 
 ## 7. 화면 구성
 
-| 경로 | 화면 |
-|---|---|
-| `/` | 홈: 오늘 구해야 할 재료 배너 + 추천 레시피 3개 + 채팅 입력창 |
-| `/inventory` | 재고 표 (D-day 색상, 정렬·수정·삭제) + 업로드 버튼 |
-| `/inventory/upload` | 영수증/사진 업로드 → 인식 결과 확인 표 |
-| `/calendar` | 일정 + 임박 재료 달력, 날짜 클릭 시 그날 추천 |
-| `/chat` | 에이전트 채팅 (레시피 카드, "이거 만들게" 버튼) |
-| `/plan` | 이번 주 식단 + 장보기 목록 |
-| `/dashboard` | 통계 |
-| `/settings` | 취향·알레르기 관리, 계정 |
+메뉴(페이지 목록)는 `app.py`의 `st.navigation`에서 정해요.
 
-모바일 우선(냉장고 앞에서 폰으로 쓰는 상황)으로 디자인하세요.
+| 파일 | 화면 |
+|---|---|
+| `views/home.py` | 홈: 오늘 구해야 할 재료 배너 + 추천 레시피 3개 + 채팅 입력창 |
+| `views/inventory.py` | 재고 표 (D-day 표시, `st.data_editor`로 바로 수정·처리) + 재료 추가 |
+| `views/upload.py` | 영수증/사진 업로드 → 인식 결과 확인 표 |
+| `views/calendar.py` | 일정 + 임박 재료 달력, 날짜 클릭 시 그날 추천 |
+| `views/chat.py` | 에이전트 채팅 (`st.chat_message`, 레시피 카드, "이거 만들게" 버튼) |
+| `views/plan.py` | 이번 주 식단 + 장보기 목록 |
+| `views/dashboard.py` | 통계 |
+| `views/settings.py` | 취향·알레르기 관리, 계정 |
+| `views/login.py` | 로그인·회원가입 (로그인 전에만 보임) |
+
+폰에서도 쓰기 좋게 한 화면에 너무 많은 열을 두지 마세요 (냉장고 앞에서 폰으로 쓰는 상황).
 
 ---
 
@@ -258,31 +262,33 @@ create table shopping_items (
 
 > 한 번에 다 시키지 말고, **단계마다 동작 확인 → 커밋**하세요. 각 단계 시작 시 이 PLAN.md를 함께 보여주면 맥락이 유지됩니다.
 
-### Phase 0. 세팅 (반나절)
-> "PLAN.md를 읽고 Next.js 15 + TypeScript + Tailwind + shadcn/ui 프로젝트를 만들어줘. Supabase 클라이언트와 이메일 로그인을 붙이고, `.env.local.example`에 SUPABASE_URL, SUPABASE_ANON_KEY, ANTHROPIC_API_KEY, 임베딩 API 키 자리를 만들어줘. 7장의 페이지들을 빈 화면으로 라우팅해줘."
+### Phase 0. 세팅 (반나절) ✅ 완료
+> "PLAN.md를 읽고 Streamlit 프로젝트를 만들어줘. Supabase 이메일 로그인을 붙이고, `.env.example`에 SUPABASE_URL, SUPABASE_ANON_KEY, ANTHROPIC_API_KEY, 임베딩 API 키 자리를 만들어줘. 7장의 페이지들을 빈 화면으로 `st.navigation`에 등록해줘."
 
-- Supabase에 4장 SQL 실행 + RLS 설정
+- Supabase에 `supabase/migrations/0001_init.sql` 실행 (테이블 + RLS)
 
-### Phase 1. 재고 + 유통기한 (MVP 핵심, 1~2일)
-> "inventory 페이지를 만들어줘. 재고 표에 D-day를 계산해 D-3 주황, D-1 빨강으로 표시하고, 직접 추가/수정/삭제할 수 있게. ingredient_catalog에 한국 가정에서 자주 쓰는 재료 150개의 냉장 보관일수 시드 SQL도 만들어줘. expires_at은 코드로 계산해."
+### Phase 1. 재고 + 유통기한 (MVP 핵심, 1~2일) ✅ 완료
+> "views/inventory.py를 만들어줘. 재고 표에 D-day를 계산해 D-3 주황, D-1 빨강으로 표시하고, 직접 추가/수정/삭제할 수 있게. ingredient_catalog에 한국 가정에서 자주 쓰는 재료 150개의 냉장 보관일수 시드 SQL도 만들어줘. expires_at은 코드로 계산하고, 계산 로직은 pytest로 테스트해줘."
+
+- Supabase에 `supabase/migrations/0002_seed_catalog.sql` 실행 (카탈로그 147개)
 
 ### Phase 2. 영수증/사진 인식 (1일)
-> "/inventory/upload를 만들어줘. '영수증'이면 claude-haiku-5-5, '냉장고 사진'이면 claude-sonnet-5-5로 이미지를 보내 5장 ①의 JSON 형식으로 재료를 뽑아. 결과는 편집 가능한 표로 보여주고 저장 버튼을 누르면 inventory에 넣어. 카탈로그에 없는 재료는 Haiku에게 보관일수를 물어 카탈로그에 추가해."
+> "views/upload.py를 만들어줘. '영수증'이면 claude-haiku-5-5, '냉장고 사진'이면 claude-sonnet-5-5로 이미지를 보내 5장 ①의 JSON 형식으로 재료를 뽑아. 결과는 편집 가능한 표로 보여주고 저장 버튼을 누르면 inventory에 넣어. 카탈로그에 없는 재료는 Haiku에게 보관일수를 물어 카탈로그에 추가해."
 
 ### Phase 3. 레시피 RAG (2일)
-> "recipes 테이블에 레시피를 넣는 시드 스크립트(scripts/seed-recipes.ts)를 만들어줘. 각 레시피의 제목+재료+태그를 임베딩해 저장해. 그리고 5장 ③의 하이브리드 검색(벡터 검색 → 알레르기 SQL 제외 → 코드 점수화)을 lib/recipes/search.ts로 구현하고, 홈에 임박 재료 기반 추천 3개를 출처 링크와 함께 카드로 보여줘."
+> "recipes 테이블에 레시피를 넣는 시드 스크립트(scripts/seed_recipes.py)를 만들어줘. 각 레시피의 제목+재료+태그를 임베딩해 저장해. 그리고 5장 ③의 하이브리드 검색(벡터 검색 → 알레르기 SQL 제외 → 코드 점수화)을 lib/recipes.py의 search_recipes()로 구현하고, 홈에 임박 재료 기반 추천 3개를 출처 링크와 함께 카드로 보여줘. 벡터 검색은 Supabase SQL 함수(match_recipes)로 만들어 새 마이그레이션 파일에 넣어줘."
 
 ### Phase 4. 에이전트 채팅 + 재고 차감 + 취향 기억 (2일)
-> "/chat에 Claude claude-sonnet-5-5 기반 에이전트를 만들어줘. 6장의 툴들을 구현하고 스트리밍으로 답해. 레시피 카드에 '이거 만들게' 버튼이 있고, 누르면 차감 미리보기 → 확인 시 FEFO로 재고 차감 + meal_logs 기록. 사용자가 취향/알레르기를 말하면 save_preference로 저장하고 /settings에서 볼 수 있게 해줘."
+> "views/chat.py에 claude-sonnet-5-5 기반 에이전트를 만들어줘 (로직은 lib/agent.py). 6장의 툴들을 구현하고 st.write_stream으로 스트리밍해서 답해. 레시피 카드에 '이거 만들게' 버튼이 있고, 누르면 차감 미리보기 → 확인 시 FEFO로 재고 차감 + meal_logs 기록. 사용자가 취향/알레르기를 말하면 save_preference로 저장하고 views/settings.py에서 볼 수 있게 해줘."
 
 ### Phase 5. 달력 + 일정 맞춤 + 장보기 (2일)
-> "/calendar에 FullCalendar로 일정(busy/workout/guests)을 등록하고 임박 재료도 날짜별로 표시해줘. /plan에서 '이번 주 식단 짜기'를 누르면 5장 ④ 규칙으로 7일 식단을 만들고, 5장 ⑦대로 부족 재료 장보기 목록을 만들어줘."
+> "views/calendar.py에 streamlit-calendar로 일정(busy/workout/guests)을 등록하고 임박 재료도 날짜별로 표시해줘. views/plan.py에서 '이번 주 식단 짜기'를 누르면 5장 ④ 규칙으로 7일 식단을 만들고, 5장 ⑦대로 부족 재료 장보기 목록을 만들어줘."
 
 ### Phase 6. 대시보드 + 피드백 학습 (1~2일)
-> "/dashboard에 Recharts로 구출 수, 폐기 수, 구출률, 자주 먹은 요리 TOP5를 보여줘. 요리 후 👍/👎+코멘트를 받고, 5장 ⑨처럼 평점을 추천 점수에 반영하고 코멘트를 취향으로 변환해 preferences를 갱신해."
+> "views/dashboard.py에 st.metric과 Streamlit 차트로 구출 수, 폐기 수, 구출률, 자주 먹은 요리 TOP5를 보여줘. 요리 후 👍/👎+코멘트를 받고, 5장 ⑨처럼 평점을 추천 점수에 반영하고 코멘트를 취향으로 변환해 preferences를 갱신해."
 
 ### Phase 7. 마무리 (선택)
-- Google Calendar 연동, 웹 푸시 알림(Supabase Cron으로 매일 아침 임박 재료 알림), AWS 배포
+- Google Calendar 연동, 알림(Supabase Cron으로 매일 아침 임박 재료 이메일), AWS EC2 배포 (`deploy/fridge-app.service`)
 
 ---
 
@@ -296,7 +302,8 @@ create table shopping_items (
 | 유통기한 추정 오차 | "추정" 라벨 표시, 사용자가 쉽게 수정 가능하게 |
 | 레시피 저작권 | 공공데이터·직접 작성·라이선스 확인된 출처만 사용 |
 | API 비용 | 영수증은 Haiku, 이미지 리사이즈(긴 변 1568px 이하) 후 전송, 카탈로그 캐시 |
-| API 키 노출 | Claude/임베딩 호출은 반드시 서버(API Route)에서만 |
+| API 키 노출 | 키는 `.env`에만 두고 git에 올리지 않기. Streamlit 코드는 서버에서 돌아서 브라우저에 키가 가지 않음 |
+| 새로고침하면 로그아웃됨 | Streamlit 세션은 브라우저 탭 단위라 새로고침하면 다시 로그인해야 함 (MVP에선 감수, 필요하면 나중에 쿠키 저장 추가) |
 | 바이브코딩 중 코드 꼬임 | 단계별 커밋, 한 번에 한 기능만 요청, 에러는 전체 메시지 붙여넣기 |
 
 ---
@@ -331,16 +338,16 @@ create table shopping_items (
 
 | 담당 | 주로 만지는 곳 |
 |---|---|
-| A | `src/app/(app)/inventory`, `src/app/(app)/calendar`, `src/app/(app)/dashboard`, `src/lib/inventory/` |
-| B | `src/app/(app)/chat`, `src/app/(app)/plan`, `src/app/(app)/settings`, `src/lib/recipes/`, `src/lib/agent/`, `scripts/` |
+| A | `views/inventory.py`, `views/upload.py`, `views/calendar.py`, `views/dashboard.py`, `lib/inventory*.py`, `lib/ingest.py` |
+| B | `views/chat.py`, `views/plan.py`, `views/settings.py`, `lib/recipes.py`, `lib/agent.py`, `scripts/` |
 
 ### 11-2. 시작 전에 같이 할 일 (반나절)
 
-1. `phase0-setup` PR을 `main`에 합치고, 둘 다 `main`에서 브랜치를 만들어 시작해요.
+1. `streamlit-migration` PR을 `main`에 합치고, 둘 다 `main`에서 브랜치를 만들어 시작해요.
 2. 서로 부를 함수의 **모양(입력·출력)만** 먼저 정해서 `main`에 올려요. 처음엔 가짜 데이터를 돌려줘도 돼요.
-   - A 담당: `getExpiring(days: number): Promise<InventoryItem[]>` — 임박 재료 목록
-   - B 담당: `searchRecipes({ ingredients, maxMinutes?, servings?, tags? }): Promise<RecipeMatch[]>` — 추천 레시피 목록
-   - 같이 쓰는 타입(`InventoryItem`, `Recipe`, `RecipeMatch` 등)은 `src/lib/types.ts`에 모아요.
+   - A 담당 ✅: `get_expiring(days: int, include_expired: bool = False) -> list[InventoryItem]` — 임박 재료 목록 (`lib/inventory.py`)
+   - B 담당: `search_recipes(ingredients: list[str], max_minutes=None, servings=None, tags=None) -> list[RecipeMatch]` — 추천 레시피 목록 (`lib/recipes.py`)
+   - 같이 쓰는 데이터 모양(`InventoryItem`, `Recipe`, `RecipeMatch` 등)은 `lib/models.py`에 모아요.
 3. 이렇게 하면 B는 A의 재고 기능이 끝나기 전에도 가짜 임박 재료로 레시피 검색을 개발할 수 있어요.
 
 ### 11-3. 합치는 시점
@@ -357,10 +364,12 @@ create table shopping_items (
 ### 11-4. 충돌 막는 규칙
 
 - **DB 변경은 새 파일로**: `0001_init.sql`은 고치지 말고 `0002_...sql`, `0003_...sql`처럼 새 파일을 추가해요. 번호가 겹치지 않게 만들기 전에 서로 알려요.
-- **공용 파일은 조심**: `package.json`, 내비게이션(`src/components/nav-items.ts`), 레이아웃, `src/lib/types.ts`는 고칠 때 미리 알리고 바로 PR로 올려요.
+- **DB 번호 현황**: `0001`(테이블), `0002`(카탈로그, A)까지 사용. B는 `0003`부터.
+- **공용 파일은 조심**: `requirements.txt`, 메뉴(`app.py`), `lib/models.py`, `lib/db.py`, `lib/ui.py`는 고칠 때 미리 알리고 바로 PR로 올려요.
 - **아침마다 `main` 받기**: 작업 시작 전에 `main`의 최신 내용을 자기 브랜치로 가져와요.
 - **브랜치 이름 통일**: `phase1-inventory`, `phase3-recipe-search`처럼 `phase번호-내용`으로 지어요.
 - **리뷰는 서로**: PR은 상대가 보고 합쳐요. 2차 합치기 때는 둘이 같이 전체 흐름을 직접 눌러 봐요.
-- **배포는 `main`에서만**: EC2에는 `main`만 올려요. 각자 브랜치는 각자 컴퓨터(`npm run dev`)에서 확인해요.
+- **배포는 `main`에서만**: EC2에는 `main`만 올려요. 각자 브랜치는 각자 컴퓨터(`streamlit run app.py`)에서 확인해요.
+- **PR 전에 테스트**: `pytest`가 통과해야 PR을 올려요. 계산 로직은 Streamlit·DB와 분리된 순수 함수로 만들어 테스트해요 (예: `lib/dates.py`, `lib/inventory_rules.py`).
 - **Supabase는 개발용과 배포용을 나누기**: 개발용 프로젝트 하나를 같이 쓰되, DB 구조는 반드시 마이그레이션 파일로만 바꿔요. Supabase 화면에서 직접 고치면 상대 쪽과 어긋나요.
-- **비밀값 공유 금지**: `.env.local`은 git에 올리지 않아요. 키는 각자 받거나 안전한 경로(비밀번호 관리자 등)로 공유해요.
+- **비밀값 공유 금지**: `.env`는 git에 올리지 않아요. 키는 각자 받거나 안전한 경로(비밀번호 관리자 등)로 공유해요.
