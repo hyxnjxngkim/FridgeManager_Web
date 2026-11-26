@@ -96,6 +96,8 @@ lib/                   로직
   personalize.py       피드백 학습: 평가·최근 기록·취향으로 추천 순서 조정 — 순수 함수
   feedback.py          요리 평가 저장, 후기 → 취향 (Haiku 4.5)
   feedback_ui.py       요리 후 평가 칸 (채팅·대시보드 공용)
+  ingest_rules.py      재료 등록: Claude 응답 검사·생활용품 거르기·사진 줄이기 — 순수 함수
+  ingest.py            재료 등록: 영수증(Haiku)·냉장고 사진(Sonnet) 인식, 처음 보는 재료 보관 일수 추정
   ui.py                공용 화면 조각
 db/                    SQL 마이그레이션 (번호 순서)
 scripts/
