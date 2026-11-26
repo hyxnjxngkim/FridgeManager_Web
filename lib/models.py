@@ -43,6 +43,20 @@ class InventoryItem:
     status: InventoryStatus
 
 
+# ── 취향·알레르기 (Phase 4, A) ────────────────
+PreferenceKind = Literal["allergy", "like", "dislike", "diet"]
+
+
+@dataclass
+class Preference:
+    """preferences 테이블 한 줄. 예: kind="allergy", value="땅콩" (A가 쓰고 B의 검색이 읽어요)."""
+
+    id: str
+    kind: PreferenceKind
+    value: str
+    strength: int = 1
+
+
 # ── 레시피 (Phase 3, 팀원 B) ──────────────────
 @dataclass
 class RecipeIngredient:
