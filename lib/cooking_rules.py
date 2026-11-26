@@ -60,7 +60,8 @@ def _norm(text: Optional[str]) -> str:
     return re.sub(r"\s+", "", text or "").lower()
 
 
-def _same_ingredient(ingredient: str, item: InventoryItem, catalog: list[CatalogItem]) -> bool:
+def same_ingredient(ingredient: str, item: InventoryItem, catalog: list[CatalogItem]) -> bool:
+    """레시피 재료 이름과 재고 품목이 같은 재료인지 (카탈로그 별칭 포함). 장보기 목록에서도 써요."""
     match = match_catalog(ingredient, catalog)
     if match and item.catalog_id == match.id:
         return True
@@ -102,7 +103,7 @@ def plan_cook(
     used_ids: set[str] = set()
 
     for ing in recipe.ingredients:
-        candidates = [i for i in active if i.id not in used_ids and _same_ingredient(ing.name, i, catalog)]
+        candidates = [i for i in active if i.id not in used_ids and same_ingredient(ing.name, i, catalog)]
         if not candidates:
             if not ing.optional:
                 plan.missing.append(ing.name)

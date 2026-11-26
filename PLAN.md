@@ -109,7 +109,7 @@
 2. **임베딩**: 제목 + 재료 + 태그를 합친 텍스트를 임베딩해 `embedding`에 저장
 3. **검색 (하이브리드)**:
    - 임박 재료 이름으로 쿼리 임베딩 → pgvector 상위 30개
-   - SQL 필터: 알레르기 재료 포함 레시피 **제외**(하드 필터), 바쁜 날이면 `cook_minutes <= 10`
+   - SQL 필터: 알레르기 재료 포함 레시피 **제외**(하드 필터), 바쁜 날이면 `cook_minutes <= 15`
    - 코드로 점수화: `임박 재료 사용 수 × 3 + 보유 재료 비율 × 2 + 취향 태그 일치 + 평점 보정`
 4. **생성**: 상위 3~5개를 Claude에게 넘겨 추천 이유 + **없는 재료의 대체재** 제안 (예: 생크림 → 우유+버터)
 5. 추천 결과는 레시피 카드(`recipe_card()`)로 표시 (레시피별 출처 링크는 없음)
@@ -118,7 +118,7 @@
 - `schedule_events.kind`로 규칙 매핑 (코드):
   | kind | 규칙 |
   |---|---|
-  | busy | `cook_minutes <= 10` |
+  | busy | `cook_minutes <= 15` (15분 이하 요리) |
   | workout | `'고단백'` 태그 가중치 ↑ |
   | guests | `servings`를 손님 수+본인으로 스케일, 재료량 배수 계산 |
 - "이번 주 식단 짜줘" → 7일 일정을 읽고 날짜별 추천, 임박 재료가 이른 날짜에 배치되게
@@ -217,7 +217,7 @@
 ### Phase 4. 에이전트 채팅 + 재고 차감 + 취향 기억 (2일) ✅ 완료 (A)
 > "views/chat.py에 Haiku 4.5(Bedrock) 기반 에이전트를 만들어줘 (로직은 lib/agent.py). 6장의 툴들을 구현하고 st.write_stream으로 스트리밍해서 답해. 레시피 카드에 '이거 만들게' 버튼이 있고, 누르면 차감 미리보기 → 확인 시 FEFO로 재고 차감 + meal_logs 기록. 사용자가 취향/알레르기를 말하면 save_preference로 저장하고 views/settings.py에서 볼 수 있게 해줘."
 
-### Phase 5. 달력 + 일정 맞춤 + 장보기 (2일)
+### Phase 5. 달력 + 일정 맞춤 + 장보기 (2일) ✅ 완료 (A) — 식단은 Claude 없이 코드 규칙으로 (비용 0)
 > "views/calendar.py에 streamlit-calendar로 일정(busy/workout/guests)을 등록하고 임박 재료도 날짜별로 표시해줘. views/plan.py에서 '이번 주 식단 짜기'를 누르면 5장 ④ 규칙으로 7일 식단을 만들고, 5장 ⑦대로 부족 재료 장보기 목록을 만들어줘."
 
 ### Phase 6. 대시보드 + 피드백 학습 (1~2일)
@@ -264,12 +264,13 @@
 ### 11-1. 역할 분담
 
 > 2026-11-26 변경: Phase 2는 **보류**(담당은 나중에 정함). A가 Phase 4(에이전트)를 맡고, B는 Phase 3(레시피 검색)과 레시피 카드·홈 추천에 집중해요.
+> 같은 날 추가 변경: Phase 3가 길어져 **Phase 5 전체(뒷부분 포함)를 A가 맡았어요.** `views/plan.py`도 A 담당으로 바뀌었어요.
 
 | | 팀원 A: 재고·에이전트 라인 | 팀원 B: 레시피 라인 |
 |---|---|---|
 | 1단계 | **Phase 1** 재고 표, 유통기한 계산, 재료 카탈로그 ✅ | **Phase 3** 레시피 수집, 임베딩, 검색 |
 | 2단계 | **Phase 4** 에이전트 채팅, 재고 빼기, 취향 기억 | **Phase 3 마무리** 홈 추천 카드, `recipe_card()` |
-| 3단계 | **Phase 5 앞부분** 달력, 일정 등록 | **Phase 5 뒷부분** 주간 식단, 장보기 목록 |
+| 3단계 | **Phase 5 전체** 달력·일정, 주간 식단, 장보기 목록 ✅ (Phase 3가 길어져 A가 모두 맡음) | **Phase 3 진짜 검색** 레시피 수집·임베딩·벡터 검색 |
 | 4단계 | **Phase 6 앞부분** 대시보드 통계·차트 | **Phase 6 뒷부분** 피드백 학습 |
 | 보류 | **Phase 2** 영수증·사진 인식 — 담당 미정 | |
 
@@ -277,8 +278,8 @@
 
 | 담당 | 주로 만지는 곳 |
 |---|---|
-| A | `views/inventory.py`, `views/chat.py`, `views/settings.py`, `views/calendar.py`, `views/dashboard.py`, `lib/inventory*.py`, `lib/agent.py`, `lib/preferences.py` |
-| B | `views/home.py`, `views/plan.py`, `lib/recipes.py`, `lib/ui.py`의 `recipe_card()`, `scripts/` (레시피 시드) |
+| A | `views/inventory.py`, `views/chat.py`, `views/settings.py`, `views/calendar.py`, `views/plan.py`, `views/dashboard.py`, `lib/inventory*.py`, `lib/agent.py`, `lib/preferences.py`, `lib/schedule.py`, `lib/meal_plan*.py`, `lib/shopping*.py` |
+| B | `views/home.py`, `lib/recipes.py`, `lib/ui.py`의 `recipe_card()`, `scripts/` (레시피 시드) |
 
 ### 11-2. 시작 전에 같이 할 일 (반나절)
 
@@ -309,7 +310,7 @@
 ### 11-4. 충돌 막는 규칙
 
 - **DB 변경은 새 파일로**: `0001_init.sql`은 고치지 말고 `0002_...sql`, `0003_...sql`처럼 새 파일을 추가해요. 번호가 겹치지 않게 만들기 전에 서로 알려요.
-- **DB 번호 현황**: `db/0001`(테이블), `db/0002`(카탈로그, A), `db/0004`(요리 기록에 레시피 이름, A)까지 실행 완료. `0003`은 B(Phase 3) 몫으로 비워 둠. 다음 A는 `0005`부터.
+- **DB 번호 현황**: `db/0001`(테이블), `db/0002`(카탈로그, A), `db/0004`(요리 기록에 레시피 이름, A), `db/0005`(주간 식단 `meal_plans`·장보기 보강, A)까지 실행 완료. `0003`은 B(Phase 3) 몫으로 비워 둠. 다음 A는 `0006`부터.
 - **공용 파일은 조심**: `requirements.txt`, 메뉴(`app.py`), `lib/models.py`, `lib/db.py`, `lib/ui.py`는 고칠 때 미리 알리고 바로 PR로 올려요.
 - **아침마다 `main` 받기**: 작업 시작 전에 `main`의 최신 내용을 자기 브랜치로 가져와요.
 - **브랜치 이름 통일**: `phase1-inventory`, `phase3-recipe-search`처럼 `phase번호-내용`으로 지어요.

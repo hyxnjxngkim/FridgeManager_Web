@@ -68,6 +68,11 @@ lib/                   로직
   llm.py               Claude 클라이언트 (AWS Bedrock)
   agent.py             냉장고 에이전트 (도구 7개, 스트리밍)
   recipe_source.py     레시피 검색 연결점 (B의 search_recipes + 알레르기 이중 안전장치)
+  schedule.py          일정 (바쁜 날·운동·손님)
+  meal_plan_rules.py   주간 식단 짜기 규칙 (Claude 없이) — 순수 함수
+  meal_plan.py         주간 식단 저장·조회
+  shopping_rules.py    장보기 목록 계산 (식단 재료 − 재고) — 순수 함수
+  shopping.py          장보기 목록 저장, 산 것 → 재고
   ui.py                공용 화면 조각
 db/                    SQL 마이그레이션 (번호 순서)
 scripts/
