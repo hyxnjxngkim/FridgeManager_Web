@@ -41,7 +41,7 @@ def make_plan() -> None:
     def search(names, max_minutes, servings, tags):
         return search_recipes(user.id, names, max_minutes=max_minutes, servings=servings, tags=tags)
 
-    meals = plan_week(start, events, expiring, search, days=DAYS)
+    meals = plan_week(start, events, expiring, search, days=DAYS, stock=get_inventory(user.id))
     save_week(user.id, start, meals, days=DAYS)
     st.session_state.plan_msg = f"{sum(1 for m in meals if m.match)}일치 식단을 짰어요."
 

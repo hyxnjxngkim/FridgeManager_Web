@@ -84,3 +84,28 @@ def test_busy_allows_15_minutes_but_not_20():
     assert "15분" in plan[0].reason
     plan = plan_week(MON, events, [inv("밥", date(2026, 12, 5))], fake_search(), days=1)
     assert plan[0].match.recipe.title != "볶음밥"  # 20분 → 바쁜 날엔 빠짐
+
+
+def b_like_search(calls=None):
+    """B의 진짜 검색처럼: 재료가 비면 빈 결과, 넘긴 재료를 하나도 안 쓰는 레시피는 빼요."""
+    inner = fake_search(calls)
+
+    def search(names, max_minutes, servings, tags):
+        if not names:
+            return []
+        return [m for m in inner(names, max_minutes, servings, tags) if m.uses_expiring]
+    return search
+
+
+def test_falls_back_to_stock_when_expiring_runs_out():
+    expiring = [inv("두부", date(2026, 11, 30))]
+    stock = expiring + [inv("콩나물", date(2026, 12, 10)), inv("달걀", date(2026, 12, 20))]
+    plan = plan_week(MON, [], expiring, b_like_search(), days=3, stock=stock)
+    assert [m.match.recipe.title for m in plan] == ["두부조림", "콩나물국", "계란말이"]
+    assert "구출: 두부" in plan[0].reason
+    assert plan[1].reason == "냉장고 재료: 콩나물"  # 임박 재료가 아니니 '구출'로 세지 않아요
+
+
+def test_without_stock_days_stay_empty_with_b_like_search():
+    plan = plan_week(MON, [], [inv("두부", date(2026, 11, 30))], b_like_search(), days=2)
+    assert plan[0].match and plan[1].match is None  # stock 을 안 주면 예전처럼 비어요 (그래서 화면은 stock 을 넘겨요)
