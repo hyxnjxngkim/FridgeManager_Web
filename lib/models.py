@@ -11,6 +11,13 @@ InventoryStatus = Literal["active", "used", "discarded"]
 ExpirySource = Literal["estimated", "label", "manual"]
 
 
+# ── 로그인한 사용자 ───────────────────────────
+@dataclass
+class AppUser:
+    id: str
+    email: str
+
+
 # ── 재료 카탈로그 ─────────────────────────────
 @dataclass
 class CatalogItem:

@@ -1,5 +1,6 @@
 import streamlit as st
 
+from lib.auth import require_user
 from lib.dates import today_kst
 from lib.inventory import days_left, get_expiring
 from lib.ui import coming_soon, expiry_label
@@ -7,8 +8,9 @@ from lib.ui import coming_soon, expiry_label
 st.title("오늘 구해야 할 재료")
 st.caption("3일 안에 유통기한이 끝나는 재료예요.")
 
+user = require_user()
 today = today_kst()
-items = get_expiring(3, include_expired=True)
+items = get_expiring(user.id, 3, include_expired=True)
 rescue = [i for i in items if days_left(i, today) >= 0]
 expired = [i for i in items if days_left(i, today) < 0]
 
