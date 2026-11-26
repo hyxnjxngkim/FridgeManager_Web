@@ -32,6 +32,22 @@ Python 3.9+ · Streamlit · AWS RDS PostgreSQL 18 + pgvector (`fridge` 스키마
    streamlit run app.py
    ```
 
+## 레시피 넣기 (Phase 3)
+식품안전나라 레시피 약 1,150개를 임베딩(Amazon Titan Text Embeddings V2, Bedrock)과 함께 `recipes` 표에 넣어요.
+먼저 `python scripts/migrate.py`로 `db/0003_recipes.sql`을 실행해 두세요.
+
+- **나눠서 할 때** (임베딩 만드는 사람과 DB에 넣는 사람이 다를 때)
+  ```bash
+  # 1) 임베딩 만드는 사람: API → 변환 → 임베딩 → 파일 (DB 필요 없음)
+  #    .env: RECIPE_API_KEY, BEDROCK_REGION(Titan V2가 있는 리전), AWS_PROFILE
+  python scripts/seed_recipes.py --dry-run --out db/seed/recipes_seed.jsonl.gz
+  # 2) DB에 넣는 사람: 파일 → DB (API 키·Bedrock 필요 없음, 로컬은 터널 먼저)
+  python scripts/seed_recipes.py --load-file db/seed/recipes_seed.jsonl.gz
+  ```
+- **한 번에 할 때**: `python scripts/seed_recipes.py`
+- 여러 번 실행해도 레시피 수는 늘지 않아요 (`source_id`로 덮어씀).
+- 검색할 때도 같은 모델로 검색어를 임베딩해요. 앱이 도는 곳(로컬은 AWS 로그인, EC2는 서버 역할의 `bedrock:InvokeModel` 권한)과 `.env`의 `BEDROCK_REGION`이 필요해요. Bedrock을 못 부르면 재료 이름 글자 검색으로 대신해요.
+
 ## 테스트
 ```bash
 pytest
@@ -40,6 +56,8 @@ DB 없이 돌아가요 (터널 불필요).
 - `tests/test_dates.py`, `tests/test_inventory_rules.py`: 날짜·유통기한 계산 규칙
 - `tests/test_passwords.py`: 비밀번호 암호화
 - `tests/test_inventory_page.py`: 재고 화면을 가짜 데이터로 실행
+- `tests/test_recipe_import.py`, `tests/test_recipe_rules.py`: 레시피 변환·알레르기·점수 규칙
+- `tests/test_recipes_search.py`, `tests/test_home_page.py`, `tests/test_seed_recipes.py`: 검색·홈 카드·시드 (DB·Bedrock은 가짜)
 
 ## DB 구조 바꾸기
 1. `db/`에 다음 번호 파일을 만들어요 (예: `db/0003_recipes_search.sql`). **이미 실행된 파일은 고치지 않아요.**

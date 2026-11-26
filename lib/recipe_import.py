@@ -241,6 +241,23 @@ def row_to_recipe(row: dict) -> Optional[Recipe]:
     )
 
 
+def recipe_to_row(recipe: Recipe) -> dict:
+    """Recipe → recipes 표 한 줄 (embedding 제외). source_id 는 recipe.id."""
+    return {
+        "source_id": recipe.id,
+        "title": recipe.title,
+        "ingredients": [
+            {"name": i.name, "qty": i.qty, "unit": i.unit, "optional": i.optional} for i in recipe.ingredients
+        ],
+        "steps": recipe.steps,
+        "cook_minutes": recipe.cook_minutes,
+        "servings": recipe.servings,
+        "tags": list(recipe.tags),
+        "allergens": list(recipe.allergens),
+        "image_url": recipe.image_url,
+    }
+
+
 def embedding_text(recipe: Recipe) -> str:
     """임베딩에 넣을 글: 제목 + 재료 이름 + 태그 (PLAN 5장 ③-2)."""
     names = ", ".join(i.name for i in recipe.ingredients)

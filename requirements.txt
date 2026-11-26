@@ -3,5 +3,7 @@ psycopg[binary,pool]>=3.2,<4
 bcrypt>=4.2,<6
 python-dotenv>=1.0
 tzdata>=2024.1
+# Phase 3: 레시피 임베딩 (Amazon Titan Text Embeddings V2, Bedrock)
+boto3>=1.35,<2
 # Phase 2부터 사용
 # anthropic>=0.70

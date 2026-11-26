@@ -10,3 +10,5 @@ __pycache__/
 
 # 기타
 .DS_Store
+# 시드 dry-run 결과 등 (scripts/seed_recipes.py --dry-run)
+data/
