@@ -14,7 +14,12 @@ PG_USER = os.getenv("PG_USER", "")
 PG_PASSWORD = os.getenv("PG_PASSWORD", "")
 PG_SCHEMA = os.getenv("PG_SCHEMA", "fridge")
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+# Claude (AWS Bedrock, bedrock-runtime) — 이 AWS 계정에서 열려 있는 모델만 써요.
+# - CLAUDE_MODEL: 채팅 에이전트 기본 모델. 비용을 아끼려고 Haiku 4.5.
+# - CLAUDE_MODEL_SMART: 어려운 일에만 아껴 쓰는 모델 (Sonnet 4.6). Phase 4에서는 아직 안 씀.
+AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-1")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "global.anthropic.claude-haiku-4-5-20251001-v1:0")
+CLAUDE_MODEL_SMART = os.getenv("CLAUDE_MODEL_SMART", "global.anthropic.claude-sonnet-4-6")
 
 
 def is_db_configured() -> bool:
