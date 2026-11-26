@@ -1,0 +1,19 @@
+[Unit]
+Description=FridgeManager Next.js app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ec2-user
+WorkingDirectory=/home/ec2-user/fridge-manager/.next/standalone
+Environment=NODE_ENV=production
+Environment=PORT=8501
+Environment=HOSTNAME=0.0.0.0
+# 서버 전용 비밀값(ANTHROPIC_API_KEY 등). 파일이 없으면 무시됨.
+EnvironmentFile=-/home/ec2-user/fridge-manager/.env.local
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
