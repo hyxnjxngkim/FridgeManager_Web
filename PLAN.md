@@ -88,6 +88,9 @@
 ## 5. 기능별 설계
 
 ### ① 재료 등록 (영수증 / 냉장고 사진)
+> 구현(Phase 2, A): 영수증 Haiku 4.5, 냉장고 사진 Sonnet 4.6 (`lib/ingest.py`). 줄마다 `line_text`(원문)·`is_food` 를 받아
+> 코드에서 생활용품 단어 거르기와 짧은 이름 바꿔치기 방지(`lib/ingest_rules.py`). 처음 보는 재료는 Haiku 로 보관 일수를 한 번에 추정해
+> 공용 카탈로그에 추가하되, 먹는 게 아니면 넣지 않음. 시험 결과 Haiku 는 비슷한 글자를 잘못 읽을 수 있어(고수→고추) 화면에서 확인을 안내.
 - **흐름**: `st.file_uploader`/`st.camera_input`으로 업로드 → `lib/ingest.py`가 Claude 호출 → JSON 반환 → **`st.data_editor` 확인 표** → 저장
 - **모델 분기**: 업로드 시 "영수증 / 냉장고 사진" 탭을 사용자가 고르게 하면 분기 로직이 단순 (자동 판별은 나중에)
 - **출력 형식 고정**: 툴 사용(또는 JSON 스키마)으로 아래 형태만 받도록
@@ -209,7 +212,7 @@
 
 - `python scripts/migrate.py` → `db/0002_seed_catalog.sql` 실행 (카탈로그 147개)
 
-### Phase 2. 영수증/사진 인식 (1일)
+### Phase 2. 영수증/사진 인식 (1일) ✅ 완료 (A)
 > "views/upload.py를 만들어줘. '영수증'이면 Haiku 4.5(CLAUDE_MODEL), '냉장고 사진'이면 Sonnet 4.6(CLAUDE_MODEL_SMART)으로 이미지를 보내 5장 ①의 JSON 형식으로 재료를 뽑아. 결과는 편집 가능한 표로 보여주고 저장 버튼을 누르면 inventory에 넣어. 카탈로그에 없는 재료는 Haiku에게 보관일수를 물어 카탈로그에 추가해."
 
 ### Phase 3. 레시피 RAG (2일)
@@ -273,13 +276,13 @@
 | 2단계 | **Phase 4** 에이전트 채팅, 재고 빼기, 취향 기억 | **Phase 3 마무리** 홈 추천 카드, `recipe_card()` |
 | 3단계 | **Phase 5 전체** 달력·일정, 주간 식단, 장보기 목록 ✅ (Phase 3가 길어져 A가 모두 맡음) | **Phase 3 진짜 검색** 레시피 수집·임베딩·벡터 검색 |
 | 4단계 | **Phase 6 전체** 대시보드, 피드백 학습 ✅ (A가 모두 맡음) | **Phase 3 진짜 검색** (계속) |
-| 보류 | **Phase 2** 영수증·사진 인식 — 담당 미정 | |
+| 5단계 | **Phase 2** 영수증·사진 인식 ✅ (보류했다가 A가 마지막에 맡음) | |
 
 각자 맡은 화면과 폴더가 거의 겹치지 않아 충돌이 적어요.
 
 | 담당 | 주로 만지는 곳 |
 |---|---|
-| A | `views/inventory.py`, `views/chat.py`, `views/settings.py`, `views/calendar.py`, `views/plan.py`, `views/dashboard.py`, `lib/inventory*.py`, `lib/agent.py`, `lib/preferences.py`, `lib/schedule.py`, `lib/meal_plan*.py`, `lib/shopping*.py`, `lib/stats*.py`, `lib/feedback*.py`, `lib/personalize.py` |
+| A | `views/upload.py`, `lib/ingest*.py`, `views/inventory.py`, `views/chat.py`, `views/settings.py`, `views/calendar.py`, `views/plan.py`, `views/dashboard.py`, `lib/inventory*.py`, `lib/agent.py`, `lib/preferences.py`, `lib/schedule.py`, `lib/meal_plan*.py`, `lib/shopping*.py`, `lib/stats*.py`, `lib/feedback*.py`, `lib/personalize.py` |
 | B | `views/home.py`, `lib/recipes.py`, `lib/ui.py`의 `recipe_card()`, `scripts/` (레시피 시드) |
 
 ### 11-2. 시작 전에 같이 할 일 (반나절)
