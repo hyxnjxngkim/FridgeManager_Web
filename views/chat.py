@@ -10,6 +10,7 @@ from lib.config import CLAUDE_MODEL
 from lib.cooking import apply_cook
 from lib.cooking_rules import plan_cook
 from lib.dates import d_day_label, today_kst
+from lib.feedback_ui import feedback_form
 from lib.inventory import get_catalog, get_expiring, get_inventory
 from lib.llm import get_client, llm_unavailable_reason
 from lib.models import RecipeMatch
@@ -106,15 +107,29 @@ if plan:
         if c1.button("확정 — 재고에서 빼기", type="primary", width="stretch", disabled=not plan.lines):
             for ln, (_, row) in zip(plan.lines, edited.iterrows()):
                 ln.amount = max(0.0, min(float(row["뺄 양"] or 0), ln.available))
-            rescued = apply_cook(user.id, plan)
+            result = apply_cook(user.id, plan)
+            rescued = result.rescued
             msg = f"'{plan.recipe_title}' 재료를 재고에서 뺐어요." + (f" 임박 재료 {rescued}개를 구출했어요! 🎉" if rescued else "")
             log.append({"role": "assistant", "text": msg})
             state.notes.append(f"사용자가 '{plan.recipe_title}'을(를) 만들어 재고를 뺐어요 (구출 {rescued}개).")
+            st.session_state.feedback_for = (result.meal_log_id, plan.recipe_title)
             state.pending_cook = None
             st.rerun()
         if c2.button("취소", width="stretch"):
             state.pending_cook = None
             st.rerun()
+
+# ── 요리 후 평가 ──────────────────────────────
+if msg := st.session_state.pop("feedback_msg", None):
+    st.toast(msg, icon="✅")
+if fb := st.session_state.get("feedback_for"):
+    meal_id, title = fb
+    if feedback_form(user.id, meal_id, title, key=f"fb-{meal_id}"):
+        st.session_state.pop("feedback_for", None)
+        st.rerun()
+    if st.button("나중에 평가할게요", key=f"fb-skip-{meal_id}"):
+        st.session_state.pop("feedback_for", None)
+        st.rerun()
 
 # ── 입력 ──────────────────────────────────────
 prompt = st.chat_input(

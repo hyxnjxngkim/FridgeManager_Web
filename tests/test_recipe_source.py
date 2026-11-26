@@ -1,7 +1,10 @@
 """알레르기 이중 안전장치 (lib/recipe_source.py)."""
+import pytest
+
+import lib.feedback as fb
 import lib.preferences as prefs
 import lib.recipes as b_recipes
-from lib.models import Recipe, RecipeIngredient as I, RecipeMatch
+from lib.models import Preference, Recipe, RecipeIngredient as I, RecipeMatch
 from lib.recipe_source import allergy_terms, contains_allergen, search_recipes
 
 
@@ -26,7 +29,7 @@ def test_matches_by_allergen_label_or_ingredient_name():
 
 def test_peanut_recipe_from_b_is_removed_for_peanut_allergy(monkeypatch):
     """B의 가짜 검색은 알레르기를 안 거르므로, 연결점에서 걸러져야 해요."""
-    monkeypatch.setattr(prefs, "get_allergies", lambda uid: ["땅콩"])
+    monkeypatch.setattr(prefs, "get_preferences", lambda uid: [Preference("p", "allergy", "땅콩")])
     titles = [m.recipe.title for m in search_recipes("u1", ["오이", "두부"])]
     assert titles  # 다른 레시피는 남아요
     assert all("땅콩" not in m.recipe.allergens for m in search_recipes("u1", ["오이"]))
@@ -35,5 +38,10 @@ def test_peanut_recipe_from_b_is_removed_for_peanut_allergy(monkeypatch):
 
 
 def test_no_allergies_passes_everything(monkeypatch):
-    monkeypatch.setattr(prefs, "get_allergies", lambda uid: [])
+    monkeypatch.setattr(prefs, "get_preferences", lambda uid: [])
     assert len(search_recipes("u1", ["두부"])) == len(b_recipes.search_recipes("u1", ["두부"]))
+
+
+@pytest.fixture(autouse=True)
+def no_history(monkeypatch):
+    monkeypatch.setattr(fb, "recipe_history", lambda uid: {})

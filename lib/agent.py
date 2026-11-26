@@ -1,4 +1,4 @@
-"""냉장고 에이전트 (Phase 4) — Claude + 도구 7개, 직접 쓴 도구 반복(manual loop) + 스트리밍.
+"""냉장고 에이전트 (Phase 4·6) — Claude + 도구 8개, 직접 쓴 도구 반복(manual loop) + 스트리밍.
 
 화면(views/chat.py)은 run_turn() 이 내보내는 글자를 그대로 st.write_stream 으로 보여줘요.
 재고를 실제로 빼는 일은 에이전트가 하지 않아요: prepare_cooking 은 '미리보기'만 만들고,
@@ -15,6 +15,7 @@ import anthropic
 from lib.config import CLAUDE_MODEL
 from lib.cooking_rules import CookPlan, plan_cook, summarize_plan
 from lib.dates import today_kst
+from lib.feedback import latest_meal_id, learn_from_comment, record_feedback
 from lib.inventory import days_left, get_catalog, get_expiring, get_inventory
 from lib.models import RecipeMatch
 from lib.preferences import KIND_LABELS, delete_preference, get_preferences, save_preference
@@ -31,6 +32,7 @@ SYSTEM_PROMPT = """너는 '냉장고를 부탁해' 앱의 요리 도우미야. �
 - 추천한 레시피는 화면에 카드로 따로 보여지니, 답변에서는 왜 추천하는지(어떤 임박 재료를 구하는지)와 없는 재료의 대체재만 짧게 말해.
 - 사용자가 알레르기·좋아하는 맛·싫어하는 재료·식단 목표를 말하면 save_preference 로 저장하고, 저장했다고 알려줘. 취소하면 delete_preference.
 - 알레르기 재료가 들어간 레시피는 절대 추천하지 마.
+- 사용자가 이미 만든 요리에 대해 "맛있었어", "너무 짰어"처럼 말하면 record_feedback 으로 평가(👍=1, 👎=-1)와 후기를 남겨.
 - 사용자가 "이거 만들게"처럼 요리하겠다고 하면 prepare_cooking 을 불러. 이건 재고 빼기 '미리보기'만 만들어. 실제로 빼려면 사용자가 화면에서 확인해야 한다고 알려줘. 재고가 이미 빠졌다고 말하지 마.
 - 한국어 존댓말(해요체)로만, 짧고 친근하게 답해. 반말을 섞지 마. 목록은 3개 이하로.
 """
@@ -90,6 +92,19 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "record_feedback",
+        "description": "최근 2주 안에 만든 요리에 평가를 남김. 다음 추천 순서에 반영되고, 후기는 취향으로 기억돼.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "recipe_title": {"type": "string", "description": "만든 요리 이름 (앱 알림이나 대화에 나온 그대로)"},
+                "rating": {"type": "integer", "enum": [1, -1], "description": "좋았으면 1, 별로였으면 -1"},
+                "comment": {"type": "string", "description": "사용자가 말한 후기 한 줄 (선택)"},
+            },
+            "required": ["recipe_title", "rating"],
+        },
+    },
+    {
         "name": "prepare_cooking",
         "description": "사용자가 레시피를 만들겠다고 할 때 재고 빼기 미리보기를 만듦. 실제 재고는 사용자가 화면에서 확인해야 빠져. recipe_id 는 이번 대화의 search_recipes 결과에서.",
         "input_schema": {
@@ -145,7 +160,7 @@ def _str_list(value: Any) -> list[str]:
     return [x.strip() for x in value if x.strip()][:20]
 
 
-def make_tool_handlers(user_id: str, state: AgentState) -> dict[str, Callable[[dict], Any]]:
+def make_tool_handlers(user_id: str, state: AgentState, client=None) -> dict[str, Callable[[dict], Any]]:
     """도구 이름 → 실행 함수. 모든 도구는 이 user_id 의 데이터만 다뤄요."""
     today = today_kst()
 
@@ -202,7 +217,20 @@ def make_tool_handlers(user_id: str, state: AgentState) -> dict[str, Callable[[d
         state.pending_cook = plan
         return summarize_plan(plan)
 
+    def t_record_feedback(args: dict):
+        title, rating = args.get("recipe_title"), args.get("rating")
+        if not isinstance(title, str) or rating not in (1, -1):
+            raise ToolError("recipe_title 과 rating(1 또는 -1)이 필요해요.")
+        meal_id = latest_meal_id(user_id, title.strip())
+        if meal_id is None:
+            raise ToolError(f"최근 2주 안에 '{title}'을(를) 만든 기록이 없어요.")
+        comment = args.get("comment") if isinstance(args.get("comment"), str) else None
+        record_feedback(user_id, meal_id, rating, comment)
+        learned = learn_from_comment(client, user_id, title, rating, comment)
+        return {"saved": True, "learned_preferences": learned}
+
     return {
+        "record_feedback": t_record_feedback,
         "get_inventory": t_get_inventory,
         "get_expiring": t_get_expiring,
         "search_recipes": t_search_recipes,
@@ -242,7 +270,7 @@ def run_turn(
     start = len(state.messages)
     state.shown_matches = []
     state.tools_used = []
-    handlers = make_tool_handlers(user_id, state)
+    handlers = make_tool_handlers(user_id, state, client)
 
     context = f"(오늘 날짜: {today_kst().isoformat()})"
     if state.notes:

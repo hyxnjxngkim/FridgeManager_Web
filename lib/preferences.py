@@ -68,3 +68,15 @@ def delete_preference(user_id: str, kind: str, value: str) -> bool:
 
 def delete_preference_by_id(user_id: str, pref_id: str) -> None:
     execute("delete from preferences where id = %s and user_id = %s", (pref_id, user_id))
+
+
+def bump_preference(user_id: str, kind: str, value: str) -> Preference:
+    """피드백 학습용: 없으면 새로, 있으면 strength(강도)를 1 올려요."""
+    kind, value = check_kind(kind), normalize_value(value)
+    row = fetch_one(
+        "insert into preferences (user_id, kind, value) values (%s, %s, %s)"
+        " on conflict (user_id, kind, value) do update set strength = preferences.strength + 1"
+        " returning id, kind, value, strength",
+        (user_id, kind, value),
+    )
+    return _to_pref(row)

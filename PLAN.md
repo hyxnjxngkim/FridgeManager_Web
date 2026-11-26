@@ -144,6 +144,7 @@
 - 폐기 기록: 유통기한 지난 재료를 "버렸어요 / 아직 괜찮아요" 버튼으로 정리 → `status='discarded'`
 
 ### ⑨ 피드백 학습
+> 구현(Phase 6, A): 점수 조정은 `lib/personalize.py`(👍 +2×평균, 👎 −3, 최근 7일 −2, 싫어함 −3×강도, 좋아함·식단목표 최대 +3)를 `lib/recipe_source.py`에서 B의 검색 결과에 적용. 후기→취향은 코멘트가 있을 때만 Haiku 4.5 한 번 호출(`lib/feedback.py`).
 - 요리 후 👍/👎 + 한 줄 코멘트 ("너무 매웠어")
 - 학습 방식(모델 재학습 아님, **데이터 기반 개인화**):
   1. 평점을 레시피 점수에 반영 (좋았던 레시피·태그 가중치 ↑, 싫었던 것 ↓)
@@ -164,7 +165,7 @@
 | `save_preference` | `kind`, `value` | 기억 저장 |
 | `cook_recipe` | `recipe_id`, `servings` | 차감 미리보기 반환 (확정은 UI 버튼) |
 | `make_shopping_list` | `recipe_ids[]` | 부족 재료 목록 생성 |
-| `record_feedback` | `meal_log_id`, `rating`, `comment` | 피드백 저장 |
+| `record_feedback` | `recipe_title`, `rating`(1/-1), `comment?` | 최근 2주 안에 만든 그 요리에 평가 저장, 후기는 Haiku가 취향으로 바꿔 기억 |
 
 **시스템 프롬프트 핵심**
 - 항상 `get_expiring`을 먼저 확인하고 임박 재료를 쓰는 레시피를 우선
@@ -220,7 +221,7 @@
 ### Phase 5. 달력 + 일정 맞춤 + 장보기 (2일) ✅ 완료 (A) — 식단은 Claude 없이 코드 규칙으로 (비용 0)
 > "views/calendar.py에 streamlit-calendar로 일정(busy/workout/guests)을 등록하고 임박 재료도 날짜별로 표시해줘. views/plan.py에서 '이번 주 식단 짜기'를 누르면 5장 ④ 규칙으로 7일 식단을 만들고, 5장 ⑦대로 부족 재료 장보기 목록을 만들어줘."
 
-### Phase 6. 대시보드 + 피드백 학습 (1~2일)
+### Phase 6. 대시보드 + 피드백 학습 (1~2일) ✅ 완료 (A)
 > "views/dashboard.py에 st.metric과 Streamlit 차트로 구출 수, 폐기 수, 구출률, 자주 먹은 요리 TOP5를 보여줘. 요리 후 👍/👎+코멘트를 받고, 5장 ⑨처럼 평점을 추천 점수에 반영하고 코멘트를 취향으로 변환해 preferences를 갱신해."
 
 ### Phase 7. 마무리 (선택)
@@ -271,14 +272,14 @@
 | 1단계 | **Phase 1** 재고 표, 유통기한 계산, 재료 카탈로그 ✅ | **Phase 3** 레시피 수집, 임베딩, 검색 |
 | 2단계 | **Phase 4** 에이전트 채팅, 재고 빼기, 취향 기억 | **Phase 3 마무리** 홈 추천 카드, `recipe_card()` |
 | 3단계 | **Phase 5 전체** 달력·일정, 주간 식단, 장보기 목록 ✅ (Phase 3가 길어져 A가 모두 맡음) | **Phase 3 진짜 검색** 레시피 수집·임베딩·벡터 검색 |
-| 4단계 | **Phase 6 앞부분** 대시보드 통계·차트 | **Phase 6 뒷부분** 피드백 학습 |
+| 4단계 | **Phase 6 전체** 대시보드, 피드백 학습 ✅ (A가 모두 맡음) | **Phase 3 진짜 검색** (계속) |
 | 보류 | **Phase 2** 영수증·사진 인식 — 담당 미정 | |
 
 각자 맡은 화면과 폴더가 거의 겹치지 않아 충돌이 적어요.
 
 | 담당 | 주로 만지는 곳 |
 |---|---|
-| A | `views/inventory.py`, `views/chat.py`, `views/settings.py`, `views/calendar.py`, `views/plan.py`, `views/dashboard.py`, `lib/inventory*.py`, `lib/agent.py`, `lib/preferences.py`, `lib/schedule.py`, `lib/meal_plan*.py`, `lib/shopping*.py` |
+| A | `views/inventory.py`, `views/chat.py`, `views/settings.py`, `views/calendar.py`, `views/plan.py`, `views/dashboard.py`, `lib/inventory*.py`, `lib/agent.py`, `lib/preferences.py`, `lib/schedule.py`, `lib/meal_plan*.py`, `lib/shopping*.py`, `lib/stats*.py`, `lib/feedback*.py`, `lib/personalize.py` |
 | B | `views/home.py`, `lib/recipes.py`, `lib/ui.py`의 `recipe_card()`, `scripts/` (레시피 시드) |
 
 ### 11-2. 시작 전에 같이 할 일 (반나절)

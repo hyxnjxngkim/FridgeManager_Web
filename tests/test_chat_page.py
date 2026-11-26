@@ -29,7 +29,7 @@ def env(monkeypatch):
     monkeypatch.setattr(inv, "get_inventory", lambda uid: [TOFU])
     monkeypatch.setattr(inv, "get_catalog", lambda: [])
     monkeypatch.setattr(rs, "search_recipes", lambda uid, ing, **kw: [RecipeMatch(SAMPLE_RECIPES[0], 3, ["두부"], [])])
-    monkeypatch.setattr(cooking, "apply_cook", lambda uid, plan: applied.append((uid, plan)) or 1)
+    monkeypatch.setattr(cooking, "apply_cook", lambda uid, plan: applied.append((uid, plan)) or cooking.CookResult(1, "meal-1"))
     monkeypatch.setattr("lib.dates.today_kst", lambda now=None: TODAY)
     return applied
 
@@ -59,6 +59,7 @@ def test_chat_without_llm_quick_recommend_and_cook(env):
     uid, plan = env[0]
     assert uid == USER.id and plan.lines[0].amount == 1  # 두부 1모
     assert any("구출했어요" in m.value for m in at.markdown)
+    assert any("어땠어요" in m.value for m in at.markdown)  # 요리 후 평가 칸
 
 
 def test_settings_lists_and_deletes(monkeypatch):

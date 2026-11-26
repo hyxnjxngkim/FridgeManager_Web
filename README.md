@@ -73,6 +73,11 @@ lib/                   로직
   meal_plan.py         주간 식단 저장·조회
   shopping_rules.py    장보기 목록 계산 (식단 재료 − 재고) — 순수 함수
   shopping.py          장보기 목록 저장, 산 것 → 재고
+  stats_rules.py       대시보드 숫자 (주별 구출·폐기, 구출률, TOP 5) — 순수 함수
+  stats.py             대시보드용 DB 조회
+  personalize.py       피드백 학습: 평가·최근 기록·취향으로 추천 순서 조정 — 순수 함수
+  feedback.py          요리 평가 저장, 후기 → 취향 (Haiku 4.5)
+  feedback_ui.py       요리 후 평가 칸 (채팅·대시보드 공용)
   ui.py                공용 화면 조각
 db/                    SQL 마이그레이션 (번호 순서)
 scripts/
