@@ -57,6 +57,30 @@ class Preference:
     strength: int = 1
 
 
+# ── 일정·식단·장보기 (Phase 5, A) ─────────────
+ScheduleKind = Literal["busy", "workout", "guests", "normal"]
+
+
+@dataclass
+class ScheduleEvent:
+    id: str
+    date: date
+    kind: ScheduleKind
+    title: Optional[str] = None
+    guests: Optional[int] = None  # 손님 수 (kind="guests")
+
+
+@dataclass
+class ShoppingItem:
+    id: str
+    name: str
+    quantity: Optional[float]
+    unit: Optional[str]
+    checked: bool
+    source: str  # "plan" / "manual"
+    recipe_title: Optional[str] = None
+
+
 # ── 레시피 (Phase 3, 팀원 B) ──────────────────
 @dataclass
 class RecipeIngredient:

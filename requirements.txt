@@ -3,5 +3,6 @@ psycopg[binary,pool]>=3.2,<4
 bcrypt>=4.2,<6
 python-dotenv>=1.0
 tzdata>=2024.1
+streamlit-calendar>=1.4,<2
 # Claude (AWS Bedrock). 2.x는 Bedrock의 4.6 이하 모델이 거부하는 API 버전을 보내서 2 미만으로 고정
 anthropic[bedrock]>=0.125,<2
