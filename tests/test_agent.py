@@ -8,10 +8,11 @@ import pytest
 
 import lib.agent as agent
 from lib.agent import AgentState, run_tool, run_turn
-from lib.fake_recipes import SAMPLE_RECIPES
-from lib.models import InventoryItem, Preference, RecipeMatch
+from lib.models import Recipe, RecipeIngredient, InventoryItem, Preference, RecipeMatch
 
 TODAY = date(2026, 11, 26)
+TOFU_RECIPE = Recipe("r-tofu", "두부조림", [RecipeIngredient("두부", 1, "모"), RecipeIngredient("대파", 0.5, "대")], "1. 굽는다.\n2. 졸인다.", cook_minutes=15, servings=2, allergens=["대두"])
+SAMPLE_RECIPES = [TOFU_RECIPE]
 
 
 class FakeStream:

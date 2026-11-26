@@ -67,7 +67,7 @@ lib/                   로직
   cooking.py           재고 빼기 적용 + 요리 기록
   llm.py               Claude 클라이언트 (AWS Bedrock)
   agent.py             냉장고 에이전트 (도구 7개, 스트리밍)
-  recipe_source.py     레시피 검색 연결점 (B의 lib/recipes.py 가 없으면 fake_recipes.py)
+  recipe_source.py     레시피 검색 연결점 (B의 search_recipes + 알레르기 이중 안전장치)
   ui.py                공용 화면 조각
 db/                    SQL 마이그레이션 (번호 순서)
 scripts/

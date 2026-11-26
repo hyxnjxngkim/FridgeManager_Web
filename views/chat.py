@@ -13,24 +13,8 @@ from lib.dates import d_day_label, today_kst
 from lib.inventory import get_catalog, get_expiring, get_inventory
 from lib.llm import get_client, llm_unavailable_reason
 from lib.models import RecipeMatch
-from lib.recipe_source import USING_SAMPLE_RECIPES, search_recipes
-
-try:  # 팀원 B가 lib/ui.py 에 만드는 레시피 카드 (PLAN.md 11-2)
-    from lib.ui import recipe_card  # type: ignore[attr-defined]
-except ImportError:
-
-    def recipe_card(match: RecipeMatch) -> None:  # B의 카드가 들어오기 전 임시 카드
-        r = match.recipe
-        with st.container(border=True):
-            meta = " · ".join(x for x in [f"{r.cook_minutes}분" if r.cook_minutes else "", f"{r.servings}인분" if r.servings else ""] if x)
-            st.markdown(f"**{r.title}**  {meta}")
-            if match.uses_expiring:
-                st.caption("구출하는 재료: " + ", ".join(match.uses_expiring))
-            if match.missing:
-                st.caption("없는 재료: " + ", ".join(match.missing))
-            with st.expander("재료·만드는 법"):
-                st.markdown("\n".join(f"- {i.name} {i.qty:g}{i.unit or ''}" if i.qty else f"- {i.name}" for i in r.ingredients))
-                st.markdown(r.steps)
+from lib.recipe_source import search_recipes
+from lib.ui import recipe_card  # 팀원 B (PLAN.md 11-2)
 
 
 user = require_user()
@@ -45,8 +29,6 @@ log: list[dict] = st.session_state.chat_log
 
 st.title("냉장고 에이전트")
 st.caption("임박한 재료로 뭘 만들지, 알레르기·취향까지 기억해서 추천해요.")
-if USING_SAMPLE_RECIPES:
-    st.caption("ℹ️ 레시피 검색(Phase 3)이 합쳐지기 전이라 예시 레시피 6개로 추천해요.")
 
 unavailable = llm_unavailable_reason()
 if unavailable:
