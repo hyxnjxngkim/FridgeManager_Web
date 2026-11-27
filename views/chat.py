@@ -41,6 +41,18 @@ def start_cooking(match: RecipeMatch) -> None:
     state.pending_cook = plan_cook(match.recipe, get_inventory(user.id), get_catalog(), today_kst())
 
 
+def new_chat() -> None:
+    """'새 채팅' — 이 화면의 대화만 잊어요.
+
+    알레르기·취향·식단 목표는 DB(preferences)에 있어서 그대로 남고, 새 대화에서도 에이전트가 다시 읽어요.
+    재고 빼기 확인·요리 후 평가처럼 대화에 딸린 화면도 같이 닫아요 (요리 기록은 DB에 남아요).
+    """
+    st.session_state.agent_state = AgentState()
+    st.session_state.chat_log = []
+    st.session_state.pop("feedback_for", None)
+    st.session_state.pop("feedback_msg", None)
+
+
 def quick_recommend() -> None:
     """Claude 없이: 임박 재료(3일)로 바로 검색, 없으면 냉장고의 다른 재료로."""
     names = [i.name for i in get_expiring(user.id, 3)]
@@ -139,11 +151,24 @@ if fb := st.session_state.get("feedback_for"):
         st.session_state.pop("feedback_for", None)
         st.rerun()
 
-# ── 입력 ──────────────────────────────────────
-prompt = st.chat_input(
-    "예: 오늘 뭐 해 먹지? / 나 땅콩 알레르기 있어 / 두부조림 만들게",
-    disabled=bool(unavailable),
-)
+# ── 입력 (화면 아래에 고정: 입력 칸 + 새 채팅) ─────────────
+with st.bottom:
+    c_input, c_new = st.columns([6, 1], vertical_alignment="bottom")
+    with c_input:
+        prompt = st.chat_input(
+            "예: 오늘 뭐 해 먹지? / 나 땅콩 알레르기 있어 / 두부조림 만들게",
+            disabled=bool(unavailable),
+        )
+    with c_new:
+        st.button(
+            "새 채팅",
+            icon=":material/add_comment:",
+            key="new-chat",
+            on_click=new_chat,
+            width="stretch",
+            disabled=not log and state.pending_cook is None,
+            help="대화를 지우고 새로 시작해요. 알레르기·취향·식단 목표는 그대로 기억해요.",
+        )
 if prompt:
     log.append({"role": "user", "text": prompt})
     with st.chat_message("user"):
