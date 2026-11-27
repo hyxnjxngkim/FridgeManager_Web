@@ -8,6 +8,7 @@
     2) 띄어쓰기를 없애고, 같거나 한쪽이 다른 쪽의 **끝**에 붙어 있으면 같은 재료
        ('두부' ↔ '연두부'·'순두부', '새우' ↔ '칵테일새우', '대파' ↔ '다진대파')
        끝만 보는 이유: '고추' ↔ '고추장', '파' ↔ '파프리카' 처럼 앞이 같은 다른 재료를 막으려고
+    3) 단, 끝이 같아도 다른 재료인 쌍(NOT_SAME)은 같은 재료로 보지 않음 ('배추' ≠ '양배추')
 """
 from __future__ import annotations
 
@@ -33,6 +34,21 @@ PANTRY = {
 }
 
 
+# 끝 글자가 같아도 다른 재료인 쌍 (짧은 이름, 긴 이름) — 띄어쓰기 없이.
+# 레시피 데이터 1,151개에서 '끝이 같은 이름 쌍'을 모두 뽑아 보고 실제로 다른 재료만 골랐어요.
+# 새로 발견되면 한 줄씩 더해요. (알배추·얼갈이배추 = 배추, 건새우 = 새우 처럼 같은 재료는 넣지 않아요)
+NOT_SAME = {
+    ("배추", "양배추"),
+    ("배추", "적양배추"),
+    ("상추", "양상추"),
+    ("버터", "땅콩버터"),
+    ("두유", "대두유"),  # 대두유 = 콩기름
+    ("밀가루", "메밀가루"),
+    ("포도", "건포도"),
+    ("이스트", "토마토페이스트"),
+}
+
+
 def _key(name: str) -> str:
     return re.sub(r"\s+", "", name or "")
 
@@ -52,7 +68,7 @@ def _same_key(ka: str, kb: str) -> bool:
     if ka == kb:
         return True
     short, long_ = sorted((ka, kb), key=len)
-    return len(short) >= 2 and long_.endswith(short)
+    return len(short) >= 2 and long_.endswith(short) and (short, long_) not in NOT_SAME
 
 
 def same_ingredient(a: str, b: str, catalog: Optional[list[CatalogItem]] = None) -> bool:

@@ -25,7 +25,10 @@ SOURCE_PREFIX = "foodsafety:"
 SERVINGS = 1
 HIGH_PROTEIN_G = 15.0  # 이 이상이면 '고단백' (전체 레시피의 위쪽 약 25%)
 DIET_KCAL = 150.0  # 이 이하이면 '다이어트'
-SPICY_WORDS = ["고춧가루", "고추장", "청양고추", "페퍼론치노", "핫소스", "칠리", "고추기름"]
+SPICY_WORDS = ["고춧가루", "고추장", "청양고추", "페퍼론치노", "핫소스", "칠리", "고추기름", "김치", "건고추", "마른고추"]
+# 매운맛을 찾기 전에 지우는 말: 고춧가루를 안 쓰는 김치 (예: '물김치국물' → '국물')
+# 홍고추·청고추·풋고추·꽈리고추는 맵지 않거나 장식용이 많아서 SPICY_WORDS 에 넣지 않았어요
+NOT_SPICY = ["백김치", "물김치", "동치미", "나박김치", "명이김치"]  # 명이김치 = 간장에 절인 명이나물
 
 # 조리법별 기본 시간(분) — 추정용
 WAY_BASE_MINUTES = {"기타": 10, "볶기": 15, "굽기": 20, "찌기": 20, "끓이기": 25, "튀기기": 25}
@@ -195,6 +198,13 @@ def _num(value) -> Optional[float]:
         return None
 
 
+def _without_not_spicy(name: str) -> str:
+    name = name.replace(" ", "")
+    for w in NOT_SPICY:
+        name = name.replace(w, "")
+    return name
+
+
 def make_tags(row: dict, ingredients: list[RecipeIngredient]) -> list[str]:
     tags: list[str] = []
     for key in ("RCP_PAT2", "RCP_WAY2"):
@@ -207,7 +217,7 @@ def make_tags(row: dict, ingredients: list[RecipeIngredient]) -> list[str]:
         tags.append("고단백")
     if kcal is not None and kcal <= DIET_KCAL:
         tags.append("다이어트")
-    if any(w in i.name for i in ingredients for w in SPICY_WORDS):
+    if any(w in _without_not_spicy(i.name) for i in ingredients for w in SPICY_WORDS):
         tags.append("매운맛")
     return list(dict.fromkeys(tags))  # 순서 유지하며 중복 제거
 
