@@ -19,7 +19,11 @@ from lib.recipe_rules import has_allergen, rank, score_recipe
 
 log = logging.getLogger(__name__)
 
-CANDIDATES = 30  # 벡터 검색으로 가져올 후보 수
+CANDIDATES = 30  # 벡터 검색으로 처음 가져올 후보 수
+# 점수로 거른 뒤 MIN_RESULTS 개보다 적으면 후보를 늘려 다시 찾아요 (같은 검색어 임베딩을 다시 써서
+# Bedrock 을 더 부르지 않고, DB 조회만 한 번 더 해요). 검색 전략 실험 R7 참고.
+CANDIDATE_STEPS = (CANDIDATES, 100, 300)
+MIN_RESULTS = 3
 
 _COLUMNS = "id, title, ingredients, steps, cook_minutes, servings, tags, allergens, image_url"
 _FILTERS = (
@@ -93,7 +97,7 @@ def _to_recipe(row: dict) -> Recipe:
 
 
 def _candidates(
-    query: str, ingredients: list[str], allergies: list[str], max_minutes: Optional[int]
+    query: str, ingredients: list[str], allergies: list[str], max_minutes: Optional[int], limit: int = CANDIDATES
 ) -> list[Recipe]:
     filters = (allergies, max_minutes, max_minutes)
     try:
@@ -103,9 +107,9 @@ def _candidates(
         if not ingredients:
             return []
         patterns = [f"%{name.strip()}%" for name in ingredients if name.strip()]
-        rows = _fetch_all(_TEXT_SQL, (*filters, patterns, CANDIDATES))
+        rows = _fetch_all(_TEXT_SQL, (*filters, patterns, limit))
     else:
-        rows = _fetch_all(_VECTOR_SQL, (*filters, vec, CANDIDATES))
+        rows = _fetch_all(_VECTOR_SQL, (*filters, vec, limit))
     return [_to_recipe(r) for r in rows]
 
 
@@ -117,7 +121,9 @@ def search_recipes(
     servings: Optional[int] = None,
     tags: Optional[list[str]] = None,
 ) -> list[RecipeMatch]:
-    """임박 재료(ingredients)를 쓰는 레시피를 점수 순으로 (최대 30개).
+    """임박 재료(ingredients)를 쓰는 레시피를 점수 순으로.
+
+    후보 30개에서 점수로 거른 결과가 3개보다 적으면 후보를 100개, 300개로 늘려 다시 찾아요.
 
     - user_id: 이 사용자의 알레르기 레시피는 빼고, 재고로 보유 비율·없는 재료를 계산해요
     - ingredients: 임박 재료 이름 목록, 예: ["두부", "우유"]
@@ -135,15 +141,22 @@ def search_recipes(
         return []
 
     allergies = _user_allergies(user_id)
-    recipes = _candidates(query, ingredients, allergies, max_minutes)
-    if not recipes:
-        return []
-    have, catalog = _user_have(user_id), _catalog()
-    matches = [
-        score_recipe(r, ingredients, have, tags, catalog)
-        for r in recipes
-        if not has_allergen(r, allergies)  # SQL 로 뺐지만 한 번 더
-    ]
-    if ingredients:  # 구출 레시피: 임박 재료를 하나도 안 쓰는 레시피는 빼요
-        matches = [m for m in matches if m.uses_expiring]
+    have = catalog = None
+    matches: list[RecipeMatch] = []
+    for limit in CANDIDATE_STEPS:
+        recipes = _candidates(query, ingredients, allergies, max_minutes, limit)
+        if not recipes:
+            return []
+        if have is None:
+            have, catalog = _user_have(user_id), _catalog()
+        matches = [
+            score_recipe(r, ingredients, have, tags, catalog)
+            for r in recipes
+            if not has_allergen(r, allergies)  # SQL 로 뺐지만 한 번 더
+        ]
+        if ingredients:  # 구출 레시피: 임박 재료를 하나도 안 쓰는 레시피는 빼요
+            matches = [m for m in matches if m.uses_expiring]
+        # 충분히 찾았거나, DB 에 더 가져올 레시피가 없으면 멈춰요
+        if len(matches) >= MIN_RESULTS or len(recipes) < limit:
+            break
     return rank(matches)

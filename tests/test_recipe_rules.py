@@ -35,6 +35,20 @@ def test_same_ingredient_matches_endings_only():
     assert not same_ingredient("배", "양배추")  # 한 글자는 정확히 같을 때만
 
 
+def test_not_same_pairs_even_if_ending_matches():
+    assert not same_ingredient("배추", "양배추")
+    assert not same_ingredient("배추", "적양배추")
+    assert not same_ingredient("상추", "양상추")
+    assert not same_ingredient("버터", "땅콩버터")
+    assert not same_ingredient("두유", "대두유")
+    assert not same_ingredient("밀가루", "메밀가루")
+    # 같은 재료는 그대로 맞아요
+    assert same_ingredient("배추", "알배추")
+    assert same_ingredient("배추", "얼갈이 배추")
+    assert same_ingredient("양배추", "적양배추")
+    assert same_ingredient("새우", "건새우")
+
+
 def test_pantry():
     assert is_pantry("소금") and is_pantry("물") and is_pantry("다진 마늘", CATALOG)
     assert not is_pantry("두부")

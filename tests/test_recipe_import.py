@@ -144,6 +144,19 @@ def test_protein_diet_and_spicy_tags():
     assert row_to_recipe(row).tags == ["반찬", "찌기", "고단백", "다이어트", "매운맛"]
 
 
+def test_kimchi_and_dried_chili_are_spicy_but_white_kimchi_is_not():
+    def tags(parts):
+        return row_to_recipe(dict(ROW_28, HASH_TAG="", RCP_PARTS_DTLS=parts)).tags
+
+    assert "매운맛" in tags("두부 100g, 김치 50g")
+    assert "매운맛" in tags("돼지고기 100g, 배추김치 80g")
+    assert "매운맛" in tags("멸치 10g, 건고추 2개")
+    assert "매운맛" not in tags("닭가슴살 100g, 백김치 50g")
+    assert "매운맛" not in tags("국수 100g, 물김치국물 200ml")
+    assert "매운맛" not in tags("장어 100g, 명이김치 20g")
+    assert "매운맛" not in tags("두부 100g, 홍고추 5g")  # 장식용 고추는 넣지 않음
+
+
 def test_rows_missing_parts_or_steps_are_skipped():
     assert row_to_recipe(dict(ROW_28, RCP_PARTS_DTLS="")) is None
     no_steps = {k: v for k, v in ROW_28.items() if not k.startswith("MANUAL")}

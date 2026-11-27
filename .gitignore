@@ -12,3 +12,5 @@ __pycache__/
 .DS_Store
 # 시드 dry-run 결과 등 (scripts/seed_recipes.py --dry-run)
 data/
+# 검색 실험의 질문 임베딩 저장 (scripts/eval_search.py)
+eval/results/cache/

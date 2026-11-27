@@ -35,7 +35,7 @@ def fake_db(monkeypatch):
             if not set(r.allergens) & set(allergies)
             and (max_minutes is None or (r.cook_minutes or 0) <= max_minutes)
         ]
-        return rows
+        return rows[: params[-1]]  # limit
 
     def fake_embed(text):
         if state["embed_fails"]:
@@ -96,6 +96,46 @@ def test_recipes_without_any_expiring_ingredient_are_dropped(fake_db):
     titles = [m.recipe.title for m in rec.search_recipes(USER_ID, ["대파"])]
     assert titles == ["된장국"]  # 대파를 쓰는 레시피만
     assert rec.search_recipes(USER_ID, ["딸기"]) == []
+
+
+def _many_recipes_db(monkeypatch, spinach_at: int, total: int = 120):
+    """레시피 total 개 중 spinach_at 번째(0부터)만 시금치를 쓰는 가짜 DB. 받은 limit 을 기록해요."""
+    rows = [
+        _row(Recipe(f"r{i}", f"레시피{i}", [RecipeIngredient("시금치" if i == spinach_at else "오이")], "1. 만든다."))
+        for i in range(total)
+    ]
+    limits = []
+
+    def fake_fetch_all(sql, params):
+        if "from preferences" in sql:
+            return []
+        limits.append(params[-1])
+        return rows[: params[-1]]
+
+    monkeypatch.setattr(rec, "_fetch_all", fake_fetch_all)
+    monkeypatch.setattr(rec, "_embed", lambda text: "[0.1]")
+    monkeypatch.setattr(rec, "_user_have", lambda user_id: [])
+    monkeypatch.setattr(rec, "_catalog", lambda: [])
+    return limits
+
+
+def test_expands_candidates_when_too_few_results(monkeypatch):
+    limits = _many_recipes_db(monkeypatch, spinach_at=110)  # 후보 30·100개 안에는 시금치 레시피가 없음
+    results = rec.search_recipes(USER_ID, ["시금치"])
+    assert limits == [30, 100, 300]  # 30 → 100 → 300 으로 늘려 다시 찾음
+    assert [m.recipe.title for m in results] == ["레시피110"]
+
+
+def test_stops_expanding_when_db_has_no_more(monkeypatch):
+    limits = _many_recipes_db(monkeypatch, spinach_at=50, total=60)
+    assert [m.recipe.title for m in rec.search_recipes(USER_ID, ["시금치"])] == ["레시피50"]
+    assert limits == [30, 100]  # 100개를 달라 했는데 60개뿐이면 더 늘리지 않음
+
+
+def test_no_expansion_when_enough_results(fake_db):
+    calls, _ = fake_db
+    rec.search_recipes(USER_ID, ["두부"])
+    assert [p[-1] for s, p in calls if "from recipes" in s] == [30]
 
 
 def test_tags_only_query_and_empty_query(fake_db):
