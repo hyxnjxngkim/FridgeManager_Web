@@ -29,6 +29,7 @@ SYSTEM_PROMPT = """너는 '냉장고를 부탁해' 앱의 요리 도우미야. �
 규칙
 - 무엇을 만들지 추천할 때는 먼저 get_expiring 으로 임박 재료를 확인하고, 그 재료로 search_recipes 를 불러.
 - 레시피는 search_recipes 결과에 있는 것만 추천해. 결과에 없는 레시피를 지어내지 마. 결과가 없으면 솔직히 말해.
+- search_recipes 의 tags 에는 사용자가 직접 말한 조건만 넣어 (예: "얼큰한 국" → 국&찌개, 매운맛). 근거가 없으면 비워 둬. 재료만 말했으면 tags 는 비워. "맵지 않은", "~ 싫어"처럼 빼 달라는 조건은 tags 에 넣지 마.
 - 추천한 레시피는 화면에 카드로 따로 보여지니, 답변에서는 왜 추천하는지(어떤 임박 재료를 구하는지)와 없는 재료의 대체재만 짧게 말해.
 - 사용자가 알레르기·좋아하는 맛·싫어하는 재료·식단 목표를 말하면 save_preference 로 저장하고, 저장했다고 알려줘. 취소하면 delete_preference.
 - 알레르기 재료가 들어간 레시피는 절대 추천하지 마.
@@ -60,7 +61,12 @@ TOOLS: list[dict[str, Any]] = [
                 "ingredients": {"type": "array", "items": {"type": "string"}, "description": "우선 쓰고 싶은 재료 (보통 임박 재료)"},
                 "max_minutes": {"type": "integer", "description": "바쁠 때 최대 조리 시간(분)"},
                 "servings": {"type": "integer", "description": "인원수"},
-                "tags": {"type": "array", "items": {"type": "string"}, "description": "예: 고단백, 다이어트, 매운맛"},
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "사용자가 직접 말한 조건만 (추측해서 넣지 마). 레시피에 있는 태그: 반찬, 국&찌개, 일품, 밥, 후식, "
+                    "끓이기, 굽기, 볶기, 찌기, 튀기기, 고단백, 다이어트, 매운맛",
+                },
             },
             "required": ["ingredients"],
         },
