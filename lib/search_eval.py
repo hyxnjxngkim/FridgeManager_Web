@@ -2,8 +2,11 @@
 
 검색을 세 단계로 나누고, 단계마다 전략을 골라 이어 붙여요.
     ① 질문 다듬기: plain(그대로) / rewrite(질문 재작성) / hyde(가짜 레시피)
+                   / rewrite_strict(엄격한 재작성: 근거 없는 태그 금지, 재료형은 재작성 안 함)
+                   / rewrite_strict_q(엄격한 재작성 + 태그는 점수에만, 검색어 글은 원래 문장 + 재료)
     ② 찾기:        vector / bm25(키워드) / rrf(벡터 + 키워드 순위 합치기)
     ③ 고르기:      Top-k / + 코드 점수(score_recipe) / + 거리 임계값 / + MMR
+                   / + 후보 늘리기(결과가 k개보다 적으면 후보 30 → 100 → 300)
 
 모든 전략에서 알레르기·조리 시간은 먼저 걸러요 (앱의 SQL 하드 필터와 같음).
 """
@@ -174,6 +177,20 @@ def from_rewrite(q: Question, data: dict) -> Prepared:
     return Prepared(text, ings, tags, mm)
 
 
+def from_rewrite_strict(q: Question, data: dict, tags_in_text: bool = True) -> Prepared:
+    """엄격한 재작성. 재료형은 다듬을 게 없어서 그대로(plain) 써요 (Claude 를 부르지 않음).
+
+    tags_in_text=False 면 태그는 점수에만 쓰고, 검색어 글은 '원래 문장 + 재료'로 해요.
+    (잘못 붙은 태그 하나가 벡터 후보 30개를 통째로 바꾸는 것을 막으려고)
+    """
+    if q.type == "재료형":
+        return plain(q)
+    p = from_rewrite(q, data)
+    if not tags_in_text:
+        p.text = " ".join([q.query, *p.ingredients])
+    return p
+
+
 def from_hyde(q: Question, fake_recipe: str) -> Prepared:
     """HyDE: 가짜 레시피 글로 찾기. 재료·태그를 따로 뽑지는 않아요 (그건 재작성의 일)."""
     base = plain(q)
@@ -188,11 +205,13 @@ class Config:
     rerank: bool = False  # 코드 점수
     threshold: Optional[float] = None  # 벡터 유사도가 이보다 낮으면 버림
     mmr: Optional[float] = None  # MMR λ (관련도 비중)
+    expand: bool = False  # 결과가 k개보다 적으면 후보 늘려 다시 찾기
     k: int = 3
     candidates: int = 30
 
     def name(self) -> str:
-        parts = [{"plain": "그대로", "rewrite": "재작성", "hyde": "HyDE"}[self.query],
+        parts = [{"plain": "그대로", "rewrite": "재작성", "hyde": "HyDE", "rewrite_strict": "재작성(엄격)",
+                  "rewrite_strict_q": "재작성(엄격, 태그는 점수만)"}[self.query],
                  {"vector": "벡터", "bm25": "BM25", "rrf": "벡터+BM25(RRF)"}[self.retrieve]]
         if self.rerank:
             parts.append("코드 점수")
@@ -200,6 +219,8 @@ class Config:
             parts.append(f"임계값 {self.threshold:g}")
         if self.mmr is not None:
             parts.append(f"MMR λ={self.mmr:g}")
+        if self.expand:
+            parts.append("후보 늘리기")
         return " + ".join(parts) + f" + Top-{self.k}"
 
     def with_(self, **kw) -> "Config":
@@ -280,6 +301,22 @@ def select(corpus: Corpus, order: list[int], prep: Prepared, cfg: Config, fridge
     return order[:cfg.k]
 
 
+EXPAND_STEPS = (100, 300)  # 앱(lib/recipes.CANDIDATE_STEPS)과 같은 단계
+
+
+def search(corpus: Corpus, qvec: np.ndarray, prep: Prepared, cfg: Config, mask: np.ndarray) -> list[int]:
+    """② 찾기 + ③ 고르기. cfg.expand 면 결과가 k개보다 적을 때 후보를 늘려 다시 찾아요."""
+    steps = (cfg.candidates, *EXPAND_STEPS) if cfg.expand else (cfg.candidates,)
+    top: list[int] = []
+    for n in steps:
+        c = cfg.with_(candidates=n)
+        order = retrieve(corpus, qvec, prep, c, mask)
+        top = select(corpus, order, prep, c)
+        if len(top) >= cfg.k or len(order) < n:  # 충분하거나, 더 가져올 후보가 없으면 멈춤
+            break
+    return top
+
+
 # ── 채점 ────────────────────────────────────────────────
 @dataclass
 class QResult:
@@ -293,6 +330,7 @@ class QResult:
     llm_calls: int
     seconds: float
     note: str = ""
+    k: int = 3
 
     @property
     def hit(self) -> int:
@@ -300,7 +338,12 @@ class QResult:
 
     @property
     def precision(self) -> float:
-        return sum(self.correct) / max(1, len(self.correct)) if self.correct else 0.0
+        """맞은 개수 ÷ k. 결과가 k개보다 적으면 빈자리는 틀린 것으로 세요 (적게 보여 줄수록 점수가 오르지 않게)."""
+        return sum(self.correct) / self.k
+
+    @property
+    def short(self) -> bool:
+        return len(self.top) < self.k
 
 
 def judge(corpus: Corpus, top: list[int], q: Question) -> tuple[list[bool], int, int]:
@@ -317,6 +360,7 @@ class Summary:
     hit: dict = field(default_factory=dict)  # 종류 → Hit 수
     total: dict = field(default_factory=dict)  # 종류 → 질문 수
     precision: float = 0.0  # Precision@k 평균 (전체)
+    short: int = 0  # 결과가 k개보다 적었던 질문 수
     violations: int = 0
     categories: float = 0.0
     llm_calls: int = 0
@@ -338,6 +382,7 @@ def summarize(run: str, results: Sequence[QResult]) -> Summary:
         s.total[r.qtype] = s.total.get(r.qtype, 0) + 1
     n = max(1, len(results))
     s.precision = sum(r.precision for r in results) / n
+    s.short = sum(r.short for r in results)
     s.violations = sum(r.allergy_violations for r in results)
     s.categories = sum(r.categories for r in results) / n
     s.llm_calls = sum(r.llm_calls for r in results)

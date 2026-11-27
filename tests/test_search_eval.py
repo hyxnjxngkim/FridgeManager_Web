@@ -11,6 +11,8 @@ from lib.search_eval import (
     Question,
     build_corpus,
     from_rewrite,
+    from_rewrite_strict,
+    search,
     hard_filter,
     improved,
     is_correct,
@@ -133,7 +135,45 @@ def test_judge_and_summary():
            QResult("R", "B", "문장형", [1], [False], 0, 1, 1, 0.3)]
     s = summarize("R", res)
     assert s.hit == {"재료형": 1, "문장형": 0} and s.hits == 1 and s.violations == 1 and s.llm_calls == 1
-    assert abs(s.precision - 0.25) < 1e-9
+    assert abs(s.precision - (1 / 3 + 0) / 2) < 1e-9  # 맞은 개수 ÷ 3 의 평균
+    assert s.short == 2  # 둘 다 3개보다 적음
+
+
+def test_precision_counts_missing_slots_as_wrong():
+    one = QResult("R", "A", "재료형", [0], [True], 0, 1, 0, 0)  # 1개만 나왔고 맞음
+    assert one.short and abs(one.precision - 1 / 3) < 1e-9  # 1.0 이 아니라 1/3
+
+
+def test_strict_rewrite_skips_ingredient_questions_and_can_keep_tags_out_of_text():
+    ing = q(type="재료형", ingredients=["시금치"])
+    assert from_rewrite_strict(ing, {"tags": ["다이어트"]}).tags == []  # 재료형은 재작성 안 함
+    s = q(type="문장형", query="얼큰한 국")
+    data = {"ingredients": ["고춧가루"], "tags": ["국&찌개", "매운맛"]}
+    with_tags = from_rewrite_strict(s, data, tags_in_text=True)
+    without = from_rewrite_strict(s, data, tags_in_text=False)
+    assert "국&찌개" in with_tags.text
+    assert without.text == "얼큰한 국 고춧가루" and without.tags == ["국&찌개", "매운맛"]  # 태그는 점수에만
+
+
+def test_search_expands_candidates_when_too_few(monkeypatch):
+    import lib.search_eval as se
+
+    c = corpus()
+    seen = []
+    real_retrieve = se.retrieve
+
+    def spy(corpus_, qvec, prep, cfg, mask):
+        seen.append(cfg.candidates)
+        return real_retrieve(corpus_, qvec, prep, cfg, mask)
+
+    monkeypatch.setattr(se, "retrieve", spy)
+    prep = plain(q(ingredients=["대파"]))  # 대파를 쓰는 레시피는 1개뿐
+    mask = np.ones(3, dtype=bool)
+    assert se.search(c, np.array([1.0, 0, 0]), prep, Config(rerank=True, candidates=1, expand=True), mask) == [1]
+    assert seen == [1, 100]  # 후보 1개로는 모자라 100개로 늘림 → 레시피가 3개뿐이라 거기서 멈춤
+    seen.clear()
+    se.search(c, np.array([1.0, 0, 0]), prep, Config(rerank=True, candidates=1), mask)
+    assert seen == [1]  # expand 가 꺼져 있으면 늘리지 않음
 
 
 def test_improved_rule():

@@ -6,7 +6,8 @@
     python scripts/eval_search.py --config "rewrite,rrf,rerank,mmr=0.7"   # 조합 하나만
     python scripts/eval_search.py --all --only I01,Q01   # 질문 몇 개만 (빠른 확인)
 
---config 낱말: plain|rewrite|hyde, vector|bm25|rrf, rerank, threshold=0.3, mmr=0.7, k=3
+--config 낱말: plain|rewrite|hyde|rewrite_strict|rewrite_strict_q, vector|bm25|rrf, rerank, expand,
+              threshold=0.15, mmr=0.7, k=3
 
 결과 (eval/results/)
     summary.md       실행별 점수표 + 남긴 단계 + 질문별로 좋아지고/나빠진 것
@@ -42,13 +43,13 @@ from lib.search_eval import (  # noqa: E402
     build_corpus,
     from_hyde,
     from_rewrite,
+    from_rewrite_strict,
     hard_filter,
     improved,
     judge,
     load_questions,
     plain,
-    retrieve,
-    select,
+    search,
     summarize,
 )
 
@@ -63,6 +64,26 @@ MMR_LAMBDAS = (0.5, 0.7)
 REWRITE_PROMPT = """다음 요리 요청을 레시피 검색 조건으로 바꿔 JSON 하나로만 답하세요. 설명은 쓰지 마세요.
 {{"ingredients": [요청에 나온 재료 이름], "tags": [아래 태그 중 맞는 것], "max_minutes": 최대 조리 시간(분, 없으면 null)}}
 태그 목록: {tags}
+요청: {query}"""
+
+# 엄격한 재작성: 근거 없는 태그·재료를 지어내지 않게 규칙과 예시를 줘요.
+# 예시는 실험 질문 50개에 없는 것만 써요 (정답을 알려 주지 않게).
+STRICT_REWRITE_PROMPT = """다음 요리 요청을 레시피 검색 조건으로 바꿔 JSON 하나로만 답하세요. 설명은 쓰지 마세요.
+{"ingredients": [재료 이름], "tags": [태그], "max_minutes": 숫자 또는 null}
+
+규칙
+- ingredients: 요청에 직접 나온 재료만 넣으세요. 재료를 지어내지 마세요.
+- tags: 그 뜻이 요청에 직접 드러날 때만 아래 목록에서 고르세요. 근거가 없으면 빈 목록 []으로 두세요.
+- '맵지 않은', '~ 말고', '~ 싫어'처럼 빼 달라는 조건은 tags 에 넣지 마세요.
+- max_minutes: 시간이 숫자로 나오면 그 숫자, 아니면 null.
+태그 목록: {tags}
+
+예시
+요청: 양배추 → {"ingredients": ["양배추"], "tags": [], "max_minutes": null}
+요청: 칼칼한 찌개 끓여 줘 → {"ingredients": [], "tags": ["국&찌개", "매운맛"], "max_minutes": null}
+요청: 연어로 뭐 해 먹지? 느끼한 건 싫어 → {"ingredients": ["연어"], "tags": [], "max_minutes": null}
+요청: 바빠서 10분 안에 되는 반찬 → {"ingredients": [], "tags": ["반찬"], "max_minutes": 10}
+
 요청: {query}"""
 
 HYDE_PROMPT = """다음 요청에 딱 맞는 한국 가정 요리 레시피 하나를 상상해서, 아래 모양 한 줄로만 쓰세요. 설명은 쓰지 마세요.
@@ -142,6 +163,13 @@ def prepare(q: Question, cfg: Config, outside: Outside):
     if cfg.query == "rewrite":
         text, sec = outside.claude("rewrite", REWRITE_PROMPT.format(tags=tags, query=q.query))
         return from_rewrite(q, _json_object(text)), 1, sec, text.replace("\n", " ")
+    if cfg.query in ("rewrite_strict", "rewrite_strict_q"):
+        tags_in_text = cfg.query == "rewrite_strict"
+        if q.type == "재료형":  # 재료 목록은 다듬을 게 없어서 Claude 를 부르지 않아요
+            return from_rewrite_strict(q, {}, tags_in_text), 0, 0.0, "(재료형: 재작성 안 함)"
+        prompt = STRICT_REWRITE_PROMPT.replace("{tags}", tags).replace("{query}", q.query)
+        text, sec = outside.claude("rewrite_strict", prompt)
+        return from_rewrite_strict(q, _json_object(text), tags_in_text), 1, sec, text.replace("\n", " ")
     if cfg.query == "hyde":
         text, sec = outside.claude("hyde", HYDE_PROMPT.format(tags=tags, query=q.query))
         line = next((ln for ln in text.splitlines() if "|" in ln), text)
@@ -168,25 +196,27 @@ def run_config(name: str, cfg: Config, corpus: Corpus, questions: list[Question]
         qvec, emb_sec = outside.embed(prep.text)
         t0 = time.perf_counter()
         mask = hard_filter(corpus, allergy_names(q), prep.max_minutes)
-        top = select(corpus, retrieve(corpus, qvec, prep, cfg, mask), prep, cfg)
+        top = search(corpus, qvec, prep, cfg, mask)
         local = time.perf_counter() - t0
         correct, violations, cats = judge(corpus, top, q)
         # 질문당 시간 = 검색 계산 + (Claude·Titan 을 처음 불렀을 때 걸린 시간, 저장해 둔 값)
         # 처음 부를 때도 저장해 둔 값만 더해서, 두 번 세지 않아요
         seconds = local + llm_sec + emb_sec
-        results.append(QResult(name, q.id, q.type, top, correct, violations, cats, calls, seconds, note))
+        results.append(QResult(name, q.id, q.type, top, correct, violations, cats, calls, seconds, note, k=cfg.k))
     return results
 
 
 def parse_config(spec: str) -> Config:
     cfg = Config()
     for word in [w.strip() for w in spec.split(",") if w.strip()]:
-        if word in ("plain", "rewrite", "hyde"):
+        if word in ("plain", "rewrite", "hyde", "rewrite_strict", "rewrite_strict_q"):
             cfg = cfg.with_(query=word)
         elif word in ("vector", "bm25", "rrf"):
             cfg = cfg.with_(retrieve=word)
         elif word == "rerank":
             cfg = cfg.with_(rerank=True)
+        elif word == "expand":
+            cfg = cfg.with_(expand=True)
         elif word.startswith("threshold="):
             cfg = cfg.with_(threshold=float(word.split("=")[1]))
         elif word.startswith("mmr="):
@@ -241,6 +271,10 @@ def ablation(corpus, questions, outside, use_llm: bool):
         log.append(("R6", cfg, res, s, keep))
         if keep:
             best, best_s = cfg, s
+    step("R7", "+ 후보 늘리기", best.with_(expand=True))
+    if use_llm and best.query == "rewrite":
+        step("R8", "재작성(엄격)", best.with_(query="rewrite_strict"))
+        step("R9", "재작성(엄격, 태그는 점수만)", best.with_(query="rewrite_strict_q"))
     return log, best, best_s
 
 
@@ -262,13 +296,13 @@ def write_details(path: Path, corpus: Corpus, questions: list[Question], runs: l
 
 
 def summary_table(summaries: list[tuple[str, Summary, Optional[bool]]], n_by_type: dict) -> list[str]:
-    lines = ["| 실행 | 재료형 Hit@3 | 문장형 Hit@3 | 합계 | Precision@3 | 알레르기 위반 | 요리 종류 수 | Claude 호출 | 질문당 초 | 남김 |",
-             "|---|---|---|---|---|---|---|---|---|---|"]
+    lines = ["| 실행 | 재료형 Hit@3 | 문장형 Hit@3 | 합계 | Precision@3 | 결과 3개 미만 | 알레르기 위반 | 요리 종류 수 | Claude 호출 | 질문당 초 | 남김 |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
     for run, s, keep in summaries:
         mark = {True: "✅", False: "—", None: "(참고)"}[keep]
         lines.append(
             f"| {run} | {s.hit.get('재료형', 0)}/{n_by_type.get('재료형', 0)} | {s.hit.get('문장형', 0)}/{n_by_type.get('문장형', 0)} "
-            f"| **{s.hits}** | {s.precision:.2f} | {s.violations} | {s.categories:.2f} | {s.llm_calls} | {s.seconds:.2f} | {mark} |"
+            f"| **{s.hits}** | {s.precision:.2f} | {s.short} | {s.violations} | {s.categories:.2f} | {s.llm_calls} | {s.seconds:.2f} | {mark} |"
         )
     return lines
 
@@ -323,6 +357,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         f"- 레시피 {len(corpus.recipes)}개, 질문 {len(questions)}개 ({', '.join(f'{k} {v}' for k, v in n_by_type.items())})",
         "- 기준에서 한 번에 한 단계씩 바꾸고, Hit@3 합(같으면 Precision@3)이 오를 때만 남겼어요. MMR 은 정답이 줄지 않으면서 요리 종류 수가 늘 때 남겼어요.",
         "- 모든 실행에서 알레르기·조리 시간은 먼저 걸러요 (앱과 같음).",
+        "- Precision@3 = 맞은 개수 ÷ 3. 결과가 3개보다 적으면 빈자리는 틀린 것으로 셉니다.",
         "",
         *summary_table([(s.run, s, keep) for _, _, _, s, keep in log], n_by_type),
         "",
