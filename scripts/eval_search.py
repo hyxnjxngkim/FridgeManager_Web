@@ -164,13 +164,16 @@ def load_corpus(path: Path) -> Corpus:
 def run_config(name: str, cfg: Config, corpus: Corpus, questions: list[Question], outside: Outside) -> list[QResult]:
     results = []
     for q in questions:
-        t0 = time.perf_counter()
         prep, calls, llm_sec, note = prepare(q, cfg, outside)
         qvec, emb_sec = outside.embed(prep.text)
+        t0 = time.perf_counter()
         mask = hard_filter(corpus, allergy_names(q), prep.max_minutes)
         top = select(corpus, retrieve(corpus, qvec, prep, cfg, mask), prep, cfg)
+        local = time.perf_counter() - t0
         correct, violations, cats = judge(corpus, top, q)
-        seconds = time.perf_counter() - t0 + llm_sec + emb_sec  # 저장해 둔 호출도 원래 걸린 시간을 더함
+        # 질문당 시간 = 검색 계산 + (Claude·Titan 을 처음 불렀을 때 걸린 시간, 저장해 둔 값)
+        # 처음 부를 때도 저장해 둔 값만 더해서, 두 번 세지 않아요
+        seconds = local + llm_sec + emb_sec
         results.append(QResult(name, q.id, q.type, top, correct, violations, cats, calls, seconds, note))
     return results
 
