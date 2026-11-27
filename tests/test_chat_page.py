@@ -62,6 +62,30 @@ def test_chat_without_llm_quick_recommend_and_cook(env):
     assert any("어땠어요" in m.value for m in at.markdown)  # 요리 후 평가 칸
 
 
+def test_new_chat_forgets_conversation_but_not_preferences(env, monkeypatch):
+    def must_not_touch(*a, **k):
+        raise AssertionError("새 채팅이 취향·알레르기를 지우면 안 돼요")
+
+    monkeypatch.setattr(prefs, "delete_preference", must_not_touch)
+    monkeypatch.setattr(prefs, "delete_preference_by_id", must_not_touch)
+
+    at = run("chat.py")
+    assert at.button(key="new-chat").disabled  # 지울 대화가 없을 땐 못 누름
+
+    at.button(key=next(b.key for b in at.button if "임박 재료로" in b.label)).click().run()
+    next(b for b in at.button if "이거 만들게" in b.label).click().run()
+    assert at.session_state["chat_log"] and at.session_state["agent_state"].pending_cook is not None
+
+    at.button(key="new-chat").click().run()
+    assert not at.exception, at.exception
+    assert at.session_state["chat_log"] == []
+    state = at.session_state["agent_state"]
+    assert state.messages == [] and state.recipes == {} and state.pending_cook is None
+    assert not any("두부조림" in m.value for m in at.markdown)  # 위의 대화가 사라짐
+    assert any("임박 재료로" in b.label for b in at.button)  # 처음 화면으로
+    assert at.button(key="new-chat").disabled
+
+
 def test_settings_lists_and_deletes(monkeypatch):
     store = [Preference("p1", "allergy", "땅콩"), Preference("p2", "like", "매운맛")]
     monkeypatch.setattr(prefs, "get_preferences", lambda uid: list(store))
